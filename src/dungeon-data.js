@@ -185,5 +185,23 @@ export const SHAFTS = [
   { at: [49.6, 14.5], len: 2.4, lean: 0.85, yaw: 0, r: 0.45, col: [0.75, 0.82, 1], i: 0.22 },
 ];
 
+// Denizens and where they start (PLAN.md 6.3, Appendix A). hp: each one's hit points from the
+// scenario. state: 'resting' (awake, at ease), 'hidden' (unseen until something disturbs them).
+// group: they share morale and act together.
+export const FOES = [
+  // room 1: four orcs on their bunks round the table; if the party is noisy they come out of the
+  // secret door behind it instead (room script 'orc-ambush')
+  { kind: 'orc', at: [38, 9], hp: 3, group: 'orcs', state: 'resting' },
+  { kind: 'orc', at: [41, 10], hp: 2, group: 'orcs', state: 'resting' },
+  { kind: 'orc', at: [38, 12], hp: 3, group: 'orcs', state: 'resting' },
+  { kind: 'orc', at: [40, 12], hp: 8, group: 'orcs', state: 'resting', guard: true },
+  // room 2: five giant rats down in the rubbish, disturbed by searching
+  { kind: 'rat', at: [31, 11], hp: 4, group: 'rats', state: 'hidden' },
+  { kind: 'rat', at: [33, 11], hp: 3, group: 'rats', state: 'hidden' },
+  { kind: 'rat', at: [34, 12], hp: 1, group: 'rats', state: 'hidden' },
+  { kind: 'rat', at: [32, 12], hp: 3, group: 'rats', state: 'hidden' },
+  { kind: 'rat', at: [34, 11], hp: 2, group: 'rats', state: 'hidden' },
+];
+
 // Room 12's floor markings: a huge green circle, white in the corners.
 export const CIRCLE_12 = { at: [13, 18], r: 5.2 };

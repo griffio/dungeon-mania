@@ -6,6 +6,8 @@ import { Heap } from './util.js';
 export const T = {
   ROCK: 0, FLOOR: 1, DOOR: 2, SECRET: 3, LEVER: 4, BLOCK: 5, GATE: 6, BARS: 7,
   PIT: 8, HATCH: 9, WATER: 10, POOL: 11, STAIRS: 12, RUBBLE: 13, CAVE: 14, EXIT: 15,
+  // the surface: the temple ruins at sunset
+  GRASS: 16, RUIN: 17, COLUMN: 18, TREE: 19, HOLE: 20,
 };
 export const TILE = [];
 const def = (t, glyph, name, o) => (TILE[t] = { glyph, name, walk: false, cost: 1, see: true, door: false, ...o });
@@ -25,6 +27,11 @@ def(T.STAIRS, '_', 'Stairs', { walk: true, cost: 2 });
 def(T.RUBBLE, 'r', 'Rubble', { walk: true, cost: 2 });
 def(T.CAVE, 'c', 'Cave floor', { walk: true, cost: 1.5 });
 def(T.EXIT, '<', 'Tunnel to the surface', { walk: true });
+def(T.GRASS, ',', 'Grass', { walk: true });
+def(T.RUIN, 'w', 'Ruined wall', { height: 0.8 });            // waist high: blocks the way, not the view
+def(T.COLUMN, 'I', 'Column', { see: false, height: 2.6 });
+def(T.TREE, 'Y', 'Trees', { see: false, height: 2.4 });
+def(T.HOLE, 'v', 'Hole down to the tunnel', { walk: true });
 const BY_GLYPH = Object.fromEntries(TILE.map((d, t) => [d.glyph, t]));
 
 const DIAG = 1.5; // a diagonal step costs half as much again (5 ft, 10 ft, 5 ft...)
@@ -33,6 +40,7 @@ const N8 = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]
 
 export class Dungeon {
   constructor(data = DATA) {
+    this.data = data;
     const rows = data.MAP.replace(/^\n/, '').replace(/\n$/, '').split('\n');
     this.W = rows[0].length; this.H = rows.length; this.n = this.W * this.H;
     this.t = new Uint8Array(this.n);
@@ -121,11 +129,13 @@ export class Dungeon {
   //   pits: walk through pits (climbing down and up)        closed: closed doors are passable (they get opened)
   //   ignore: Set of door tiles treated as walls          known: only tiles with known[i] set (explored)
   //   through: Set of door tiles passable whatever their state (planning a walk up to a locked door)
+  //   blocked: tiles with blocked[i] set can't be entered (someone is standing there)
   enter(a, b, opts) {
     const d = this.tile(b);
     if (!d.walk) return false;
     if (opts.known && !opts.known[b]) return false;
     if (opts.through?.has(b)) return true;
+    if (opts.blocked?.[b]) return false;
     if (d.hazard && !opts.pits) return false;
     if (d.door) {
       const door = this.doors.get(b);

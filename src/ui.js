@@ -14,6 +14,23 @@ export class UI {
     this.labels = $('#labels');
     this.labelEls = [];
     this.swapFrom = null;
+    this.floatEls = new Map();
+    $('#atk-go').onclick = () => this.game?.confirmAttack();
+    $('#atk-x').onclick = () => { if (this.game) { this.game.attackPlan = null; this.update(this.game); } };
+    $('#restart').onclick = () => location.reload();
+  }
+
+  // A banner across the top for a moment: an encounter starting.
+  banner(text) {
+    const b = $('#banner');
+    b.textContent = text;
+    b.classList.remove('show'); void b.offsetWidth; b.classList.add('show');
+  }
+  // The last attack's roll, shown in the attack panel for a moment.
+  lastRoll(r) { this.rolled = { ...r, at: performance.now() }; this.update(this.game); }
+  gameOver(g) {
+    $('#end .res').innerHTML = `<h2>The party has fallen</h2><p>${g.log.slice(-3).map((e) => e.text).join(' ')}</p>`;
+    $('#end').classList.add('show');
   }
 
   attach(game) {
@@ -26,15 +43,7 @@ export class UI {
     $('#party').onclick = () => game.focusParty();
     $('#viewbtn').onclick = () => $('#toggles').classList.toggle('show');
     this.automap = new Automap($('#automap'), (x, z) => { game.camera.goal = [x, z]; });
-    this.labels.textContent = '';
-    this.labelEls = game.dungeon.rooms.filter((r) => !r.passage || r.id === 'entrance').map((r) => {
-      const e = el('div', 'label' + (r.passage ? ' minor' : ''), r.passage ? r.name : `<b>${r.id}</b><span>${r.name}</span>`);
-      this.labels.appendChild(e);
-      // centre of the room's tiles
-      let sx = 0, sz = 0;
-      for (const i of r.tiles) { const [x, y] = game.dungeon.xy(i); sx += x + 0.5; sz += y + 0.5; }
-      return { el: e, room: r, x: sx / r.tiles.length, z: sz / r.tiles.length };
-    });
+    this.levelChanged(game);
     // party cards
     const cards = $('#cards');
     cards.textContent = '';
@@ -46,6 +55,21 @@ export class UI {
       this.cardEls.set(m.id, c);
     }
     this.update(game);
+  }
+
+  // Room labels for the level the party is on.
+  levelChanged(game) {
+    this.labels.textContent = '';
+    this.labelEls = game.dungeon.rooms.filter((r) => !r.passage || r.id === 'entrance' || r.id === 'temple').map((r) => {
+      const e = el('div', 'label' + (r.passage ? ' minor' : ''), r.passage ? r.name : `<b>${r.id}</b><span>${r.name}</span>`);
+      this.labels.appendChild(e);
+      // centre of the room's tiles
+      let sx = 0, sz = 0;
+      for (const i of r.tiles) { const [x, y] = game.dungeon.xy(i); sx += x + 0.5; sz += y + 0.5; }
+      return { el: e, room: r, x: sx / r.tiles.length, z: sz / r.tiles.length };
+    });
+    this.viewKey = null;
+    if (this.automap) this.automap.key = '';
   }
 
   describe(g, i) {
@@ -76,9 +100,12 @@ export class UI {
       if (m.light === 'torch') { light = `torch · ${Math.ceil(m.torchLeft)} min`; burn = m.torchLeft / TORCH_MINUTES; }
       else if (m.light === 'lantern') { light = m.shut ? 'lantern, hooded' : `lantern · ${Math.ceil(m.oil / 10)} turns`; burn = m.oil / OIL_MINUTES; }
       const spare = m.torches + (m.stub ? 1 : 0);
-      c.className = `card c-${m.id}${g.selected === m.id ? ' sel' : ''}${m.light === 'torch' || (m.light === 'lantern' && !m.shut) ? ' lit' : ''}`;
-      c.innerHTML = `<div class="nm"><span>${m.def.name}</span><i>${pos}</i></div><div class="rl">${m.def.cls}</div>`
-        + `<div class="hp"><b style="width:100%"></b></div><div class="hpt">HP ${m.def.hp}/${m.def.hp} · AC ${m.def.ac}</div>`
+      const enc = g.mode === 'encounter', done = enc && m.acted;
+      c.className = `card c-${m.id}${g.selected === m.id ? ' sel' : ''}${m.dead ? ' dead' : m.downed ? ' downed' : ''}${done ? ' done' : ''}`;
+      const state = m.dead ? '<em>dead</em>' : m.downed ? `<em>downed · ${m.downed} round${m.downed === 1 ? '' : 's'}</em>`
+        : enc ? `${m.moved ? '<s>move</s>' : 'move'} · ${m.acted ? '<s>act</s>' : 'act'}` : m.def.cls;
+      c.innerHTML = `<div class="nm"><span>${m.def.name}</span><i>${pos}</i></div><div class="rl">${state}</div>`
+        + `<div class="hp"><b style="width:${Math.round(100 * Math.max(0, m.hp) / m.def.hp)}%"></b></div><div class="hpt">HP ${m.hp}/${m.maxHp}${m.diseased ? ' (diseased)' : ''} · AC ${m.def.ac} · ${m.def.missile.name} ${m.ammo}</div>`
         + `<div class="lt">${light}</div><div class="burn"><b style="width:${Math.round(burn * 100)}%"></b></div>`
         + `<div class="kit">${spare} torch${spare === 1 ? '' : 'es'}${m.def.kit.lantern ? ` · ${m.flasks} oil` : ''}${m.broken ? ' · <em>weapon cracked</em>' : ''}</div>`;
     }
@@ -97,6 +124,30 @@ export class UI {
       grid.appendChild(b);
     });
     ord.appendChild(grid);
+
+    // the encounter: whose phase it is, the foes in sight, and the attack panel
+    const rb = $('#roundbar');
+    if (g.mode === 'encounter' && g.enc) {
+      const e = g.enc, foes = g.activeFoes().filter((f) => g.foeShown(f));
+      const phase = e.phase === 'party' ? 'Your move' : e.phase === 'foes' ? 'The foes act' : '…';
+      rb.innerHTML = `<div class="rd">Round ${e.round} <span>${phase}</span></div>`
+        + (e.init ? `<div class="init">Initiative: party ${e.init.party}, foes ${e.init.foes}</div>` : '')
+        + `<div class="foes">${foes.map((f) => `<span>${f.def.name}<i style="width:${Math.round(100 * f.hp / f.maxHp)}%"></i></span>`).join('')}</div>`;
+      rb.classList.add('show');
+    } else rb.classList.remove('show');
+    const ap = $('#attack'), plan = g.attackPlan, rolled = this.rolled && performance.now() - this.rolled.at < 4000 ? this.rolled : null;
+    if (plan && g.mode === 'encounter') {
+      const lines = plan.ok ? [`Needs ${19 - plan.ac} to hit AC ${plan.ac}`, ...plan.mods.map((m) => `${m.label} ${m.value > 0 ? '+' : ''}${m.value}`)] : [];
+      $('#atk-t').innerHTML = `${plan.a.def.name} → ${plan.t.def.name} <span>${plan.ok ? `${plan.weapon.name}, ${plan.weapon.dmg}` : ''}</span>`;
+      $('#atk-l').innerHTML = plan.ok ? lines.map((l) => `<div>${l}</div>`).join('') + `<div class="need">Roll ${plan.need}+ on d20 · ${Math.round(plan.chance * 100)}%</div>` : `<div class="no">${plan.why}</div>`;
+      $('#atk-go').disabled = !plan.ok || plan.a.acted;
+      ap.classList.add('show');
+    } else if (rolled) {
+      $('#atk-t').innerHTML = `${rolled.a.def.name} → ${rolled.t.def.name}`;
+      $('#atk-l').innerHTML = `<div class="res ${rolled.roll.hit ? 'hit' : 'miss'}">d20 ${rolled.roll.roll} against ${rolled.need}: ${rolled.roll.hit ? `hit for ${rolled.dmg}` : 'miss'}</div>`;
+      $('#atk-go').disabled = true;
+      ap.classList.add('show');
+    } else ap.classList.remove('show');
 
     // actions
     const bar = $('#actions');
@@ -123,6 +174,14 @@ export class UI {
     } else if (goal >= 0 && g.known(goal) && TILE[g.dungeon.t[goal]].walk && !g.hiddenDoor(goal) && !g.busy && !g.memberAt(goal)) {
       lines.push('<div class="path none">No known way there</div>');
     }
+    if (!lines.length && g.mode === 'encounter') lines.push(`<span class="hint">${g.enc?.phase === 'party' ? 'Tap a blue tile to move, a foe to attack. Space ends the round.' : 'The foes are acting…'}</span>`);
+    // the surface is the tutorial (PLAN.md 6.3): say what the choices are
+    if (!lines.length && g.L.id === 'surface' && g.mode === 'explore') {
+      const watching = g.foes.some((f) => f.alive && f.state === 'watching');
+      lines.push(`<span class="hint">${watching
+        ? 'Tap a tile to walk there (tap again to go). Tap a hobgoblin to attack, or walk to the hole and climb down while they watch: they will attack.'
+        : 'The way is clear. Walk to the hole at the far end, and climb down. Brannoc can fix his rope first, so nobody falls.'}</span>`);
+    }
     if (!lines.length) lines.push(`<span class="hint">${g.selected ? `${g.member(g.selected).def.name} is selected and moves alone. Tap the card again to rejoin the party.` : 'Tap a tile to see the way there, and again to go. Tap a hero to move them alone.'}</span>`);
     const log = g.log.slice(-4).map((e) => `<div>${e.text}</div>`).join('');
     this.info.innerHTML = lines.join('') + `<div class="log">${log}</div>`;
@@ -130,6 +189,17 @@ export class UI {
 
   frame(g, w, h) {
     this.automap.draw(g);
+    // floating numbers over the figures
+    const live = new Set(g.floats);
+    for (const [f, e] of this.floatEls) if (!live.has(f)) { e.remove(); this.floatEls.delete(f); }
+    for (const f of g.floats) {
+      let e = this.floatEls.get(f);
+      if (!e) { e = el('div', `float ${f.cls}`, f.text); $('#floats').appendChild(e); this.floatEls.set(f, e); }
+      const p = g.camera.project(f.x, f.y + f.t * 0.5, f.z, w, h);
+      e.style.opacity = String(Math.min(1, 2.2 - f.t * 1.4));
+      e.style.transform = p ? `translate(${p[0].toFixed(1)}px, ${p[1].toFixed(1)}px) translate(-50%, -50%)` : 'translate(-999px,-999px)';
+    }
+    if (this.rolled && performance.now() - this.rolled.at > 4000) { this.rolled = null; this.update(g); }
     if (!g.view.labels) return;
     const cam = g.camera, wallTop = g.scene.wallH;
     // labels only move when the view does

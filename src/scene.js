@@ -1,6 +1,5 @@
 import { Instances, FlatList } from './renderer.js';
 import { T, TILE } from './dungeon.js';
-import { CIRCLE_12 } from './dungeon-data.js';
 import { hash2 } from './util.js';
 
 // Dungeon -> instanced grey boxes. World units are tiles (5 ft); tile (x, y) covers world
@@ -11,6 +10,7 @@ const WATER_BED = -0.8, WATER_TOP = -0.3, PIT_DEPTH = -2;
 
 const C = {
   rock: [0.075, 0.07, 0.065], rockTop: [0.1, 0.095, 0.088],
+  grass: [0.09, 0.12, 0.04], bark: [0.1, 0.07, 0.04], leaf: [0.05, 0.09, 0.03], ruin: [0.2, 0.18, 0.15],
   floor: [0.3, 0.29, 0.27], passage: [0.22, 0.215, 0.205], cave: [0.19, 0.16, 0.12],
   liner: [0.07, 0.065, 0.06], pitBottom: [0.02, 0.02, 0.02], water: [0.05, 0.09, 0.11], pool: [0.03, 0.1, 0.08],
   oak: [0.2, 0.12, 0.06], iron: [0.05, 0.05, 0.055], secret: [0.13, 0.07, 0.15], block: [0.16, 0.15, 0.14],
@@ -20,7 +20,7 @@ const C = {
 export class SceneBuilder {
   constructor(d) {
     this.d = d;
-    this.sets = { box: new Instances(4096), cyl: new Instances(256), sph: new Instances(256), cone: new Instances(16) };
+    this.sets = { box: new Instances(4096), cyl: new Instances(256), sph: new Instances(256), cone: new Instances(16), ico: new Instances(4) };
     this.version = 0;
   }
 
@@ -38,14 +38,21 @@ export class SceneBuilder {
   build({ lowWalls = false, secrets: showSecrets = false } = {}, state = {}) {
     this.state = state;
     const d = this.d, { box, cyl, sph } = this.sets;
-    box.clear(); cyl.clear(); sph.clear(); this.sets.cone.clear();
+    box.clear(); cyl.clear(); sph.clear(); this.sets.cone.clear(); this.sets.ico.clear();
     this.wallH = lowWalls ? LOW_WALL_H : WALL_H;
     this.planStairs();
     const wallH = this.wallH;
+    // how tall each tile stands, for the sun's shadows (PLAN.md 6.3: the surface at sunset)
+    this.heights = new Float32Array(d.n);
+    // and how wide: 0 fills the tile, otherwise the radius of a round thing (a column, a canopy)
+    this.round = new Float32Array(d.n);
     for (let i = 0; i < d.n; i++) {
       const [x, y] = d.xy(i), t = d.t[i], cx = x + 0.5, cz = y + 0.5;
       const seed = hash2(x, y);
+      const surface = this.addSurface(i, x, y, t, seed);
+      if (surface) continue;
       if (t === T.ROCK) {
+        this.heights[i] = WALL_H;
         // natural rock round the cave (room 20), hewn blocks everywhere else
         let cave = false;
         for (let dy = -1; dy <= 1 && !cave; dy++) for (let dx = -1; dx <= 1; dx++) if (d.at(x + dx, y + dy) === T.CAVE) { cave = true; break; }
@@ -98,6 +105,57 @@ export class SceneBuilder {
       sph.add(lx + 0.5, 0.56, z + (state.leverPulled ? 0.3 : -0.15), 0.11, 0.11, 0.11, 0, [0.5, 0.3, 0.1], 8);
     }
     this.version++;
+  }
+
+  // The surface tiles: grass, ruined walls, columns, trees, the hole. Returns true if it drew i.
+  addSurface(i, x, y, t, seed) {
+    const { box, cyl, sph, cone } = this.sets, cx = x + 0.5, cz = y + 0.5;
+    const ground = (col, mat = 0) => box.add(cx, -0.1, cz, 1, 0.1, 1, 0, jitter(col, seed, 0.15), mat);
+    switch (t) {
+      case T.GRASS:
+        ground(C.grass);
+        // a few tufts
+        for (let k = 0; k < 3; k++) {
+          const s = hash2(x * 5 + k, y * 3 - k);
+          if (s > 0.55) cone.add(x + 0.15 + 0.7 * s, 0, y + 0.15 + 0.7 * hash2(y + k, x), 0.14, 0.18 + 0.1 * s, 0.14, 0, jitter(C.grass, s, 0.3));
+        }
+        return true;
+      case T.RUIN: {
+        // broken courses of stone, waist high or lower
+        const h = 0.35 + 0.75 * seed;
+        ground(C.grass);
+        box.add(cx, 0, cz, 1, h, 0.9, 0, jitter(C.ruin, seed), 1);
+        if (seed > 0.6) box.add(cx + 0.15, h, cz, 0.6, 0.18, 0.5, seed, jitter(C.ruin, seed * 2), 1);
+        this.heights[i] = h;
+        return true;
+      }
+      case T.COLUMN: {
+        const h = seed > 0.75 ? 1.1 + seed : 2.6; // some broken off short
+        box.add(cx, -0.1, cz, 1, 0.1, 1, 0, jitter(C.floor, seed, 0.06), 2);
+        box.add(cx, 0, cz, 0.9, 0.2, 0.9, 0, C.ruin, 1);
+        cyl.add(cx, 0.2, cz, 0.62, h - 0.2, 0.62, 0, jitter(C.ruin, seed, 0.1), 1);
+        if (h > 2) box.add(cx, h - 0.15, cz, 0.85, 0.2, 0.85, 0, C.ruin, 1);
+        this.heights[i] = h; this.round[i] = 0.33;
+        return true;
+      }
+      case T.TREE: {
+        ground(C.grass);
+        const h = 1.6 + seed;
+        cyl.add(cx, 0, cz, 0.22, h * 0.6, 0.22, 0, C.bark);
+        sph.add(cx, h * 0.45, cz, 1.2 + seed * 0.4, h * 0.65, 1.2 + seed * 0.4, seed * 6, jitter(C.leaf, seed, 0.3));
+        this.heights[i] = h; this.round[i] = 0.6 + seed * 0.2;
+        return true;
+      }
+      case T.HOLE:
+        box.add(cx, -0.1, cz, 1, 0.1, 1, 0, jitter(C.floor, seed, 0.06), 2);
+        cyl.add(cx, -0.08, cz, 0.85, 0.1, 0.85, 0, [0.005, 0.004, 0.004]);
+        for (let k = 0; k < 5; k++) {
+          const a = (k / 5) * Math.PI * 2 + seed, s = hash2(k, x);
+          sph.add(cx + Math.cos(a) * 0.45, -0.05, cz + Math.sin(a) * 0.45, 0.22 + 0.1 * s, 0.14, 0.2, a, jitter(C.ruin, s));
+        }
+        return true;
+    }
+    return false;
   }
 
   // Stairs tiles form flights. A flight with a link to the surface goes up; others go down,
@@ -234,6 +292,12 @@ export class SceneBuilder {
       case 'corpse': B([0.2, 0.2, 0.22], 8); break;
       case 'chest': B(p.room === '14' ? [0.3, 0.14, 0.06] : C.wood); break;
       case 'bundles': B(C.cloth, 0); break;
+      case 'bedroll': B([0.2, 0.15, 0.08], 0); break;
+      case 'drum': cyl.add(x, 0, z, p.w, p.h, p.d, yaw, jitter(C.ruin, x), 1, 0, Math.PI / 2, 0); break;
+      case 'campfire':
+        for (let k = 0; k < 4; k++) box.add(x, 0, z, 0.7, 0.08, 0.1, (k * Math.PI) / 4, C.bark);
+        sph.add(x, 0.02, z, 0.36, 0.2, 0.36, 0, [1, 0.45, 0.12], 4, 1.6);
+        break;
       default: B(C.wood);
     }
   }
@@ -241,10 +305,9 @@ export class SceneBuilder {
   // Ground overlays that only change with the view options: room 12's green circle, and
   // optionally a tint per room.
   decals({ tintRooms = false } = {}) {
-    const out = new FlatList(16, 1024), d = this.d;
-    const [cx, cz] = CIRCLE_12.at;
-    // a thin brass border round the green stone (the stone itself is in the floor shader)
-    out.push(cx, 0.012, cz, 0, CIRCLE_12.r * 2, CIRCLE_12.r * 2, 1, 0, 0.75, 0.55, 0.25, 0.9, 0.012, 0, 1, 0); // lit, like the floor
+    const out = new FlatList(16, 1024), d = this.d, circle = d.data.CIRCLE_12;
+    // a thin brass border round room 12's green stone (the stone itself is in the floor shader)
+    if (circle) out.push(circle.at[0], 0.012, circle.at[1], 0, circle.r * 2, circle.r * 2, 1, 0, 0.75, 0.55, 0.25, 0.9, 0.012, 0, 1, 0); // lit, like the floor
     if (tintRooms) {
       for (const r of d.rooms) {
         const hue = hash2(r.index * 13 + 7, 3) * 360, col = hsl(hue, r.passage ? 0.25 : 0.6, 0.55);

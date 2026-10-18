@@ -56,3 +56,60 @@ export function clockText(minutes) {
   const turn = Math.floor(minutes / TURN) + 1, h = Math.floor(minutes / 60), m = Math.floor(minutes % 60);
   return { turn, time: `${h}:${String(m).padStart(2, '0')}` };
 }
+
+// ---------- combat (PLAN.md 3.3-3.4) ----------
+
+// d20 roll needed to hit armour class `ac`, before modifiers. `base` is the attacker's row of the
+// B/X attack matrix as "the roll that hits AC 0": 19 for characters of level 1-3 and monsters of
+// up to 1 HD, 18 for 1+ to 2 HD, 17 for 2+ to 3, 16 for 3+ to 4.
+export const hitBase = (hd) => (hd <= 1 ? 19 : hd <= 2 ? 18 : hd <= 3 ? 17 : 16);
+
+// An attack. mods: [{ label, value }] added to the roll. A natural 20 always hits, a natural 1
+// always misses. Returns the roll, what it needed, and the lines that explain it.
+export function attackRoll(rng, base, ac, mods = []) {
+  const bonus = mods.reduce((a, m) => a + m.value, 0), need = base - ac - bonus;
+  const r = die(rng, 20);
+  const hit = r === 20 || (r !== 1 && r >= need);
+  return { roll: r, need: Math.max(2, Math.min(20, need)), hit, natural: r === 20 ? 20 : r === 1 ? 1 : 0 };
+}
+// The chance (0..1) an attack hits, for the panel's odds.
+export function hitChance(base, ac, mods = []) {
+  const need = Math.max(2, Math.min(20, base - ac - mods.reduce((a, m) => a + m.value, 0)));
+  return (21 - need) / 20;
+}
+
+// Damage: never less than 1 on a hit.
+export const damage = (rng, dice, bonus = 0) => Math.max(1, roll(rng, dice) + bonus);
+
+// Morale: 2d6 against morale; over it, the group breaks. ML 12 never breaks.
+export function moraleCheck(rng, ml) {
+  if (ml >= 12) return { roll: 0, ml, broke: false, text: 'fearless' };
+  const r = roll(rng, '2d6');
+  return { roll: r, ml, broke: r > ml, text: `2d6 ${r} against morale ${ml}` };
+}
+
+// Surprise: each side is surprised on 1-2 on d6. Group initiative: d6 each, the party wins ties.
+export const surprise = (rng) => inSix(rng, 2);
+export function initiative(rng) {
+  const party = die(rng, 6), foes = die(rng, 6);
+  return { party, foes, partyFirst: party >= foes };
+}
+
+// Saving throws, B/X, for levels 1-3: [death/poison, wands, paralysis/stone, breath, spells].
+export const SAVES = {
+  Fighter: [12, 13, 14, 15, 16], Cleric: [11, 12, 14, 16, 15], 'Magic-User': [13, 14, 13, 16, 15],
+  Thief: [13, 14, 13, 16, 15], NM: [14, 15, 16, 17, 18],
+};
+export const SAVE = { poison: 0, wands: 1, paralysis: 2, breath: 3, spells: 4 };
+export function save(rng, cls, kind) {
+  const need = (SAVES[cls] || SAVES.NM)[SAVE[kind]], r = die(rng, 20);
+  return { roll: r, need, ok: r >= need, text: `save vs ${kind}: d20 ${r}, needed ${need}` };
+}
+
+// Missile range bands in tiles [short, medium, long]: +1 short, 0 medium, -1 long, beyond out of range.
+export function rangeMod(dist, [s, m, l]) {
+  if (dist <= s) return 1;
+  if (dist <= m) return 0;
+  if (dist <= l) return -1;
+  return null;
+}

@@ -1,20 +1,72 @@
 import { Game } from '../src/game.js';
 import { TILE, T } from '../src/dungeon.js';
 
-// A bot that explores the dungeon fairly, under fog, through the game's own actions: it walks to
-// the edge of what it has seen, opens doors (smashing locks), keeps a light burning, and when
-// nothing is left to walk to it searches the walls, spot by spot, like a player who has run out of
-// ideas, going round again (up to three passes) if that turns up nothing.
+// A bot that plays the dungeon fairly, under fog, through the game's own actions: it walks to the
+// edge of what it has seen, opens doors (smashing locks), keeps a light burning, fights whatever
+// it meets, and when nothing is left to walk to it searches the walls, spot by spot, like a player
+// who has run out of ideas, going round again (up to three passes) if that turns up nothing.
+// The game is driven by promises (walking, attacks, the round loop) that only move on as the game
+// updates, so the bot starts an action, then runs updates until the game is idle again.
 const ui = { update() {}, viewKey: null };
 const N8 = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+const tick = () => new Promise((r) => setImmediate(r));
 
-function settle(g) {
-  for (let k = 0; k < 20000 && g.busy; k++) g.update(0.05);
-  g.update(0.05);
+async function settle(g) {
+  for (let k = 0; k < 20000 && g.busy; k++) { g.update(0.05); await tick(); }
+  g.update(0.05); await tick();
 }
 
-export function explore(seed) {
-  const g = new Game({ ui, seed }), d = g.dungeon;
+// Fight until the encounter ends: each hero bandages a downed friend, else hits a foe beside them,
+// else closes on the nearest foe, else shoots, else passes.
+async function fight(g) {
+  for (let guard = 0; guard < 3000 && g.mode === 'encounter'; guard++) {
+    await settle(g);
+    if (g.mode !== 'encounter') break;
+    if (g.enc.phase !== 'party') continue;
+    const m = g.ableParty().find((x) => !x.acted);
+    if (!m) { g.endPhase(); continue; }
+    g.select(m.id);
+    if (g.actions().some((a) => a.id === 'wave')) { g.act('wave'); continue; }
+    if (g.actions().some((a) => a.id === 'bandage')) { g.act('bandage'); continue; }
+    const foes = g.activeFoes().filter((f) => g.foeShown(f));
+    const beside = foes.find((f) => g.inMelee(m.tile, f.tile));
+    if (beside) { g.attackPlan = g.planAttack(m, beside); g.confirmAttack(); await settle(g); continue; }
+    if (!m.moved && foes.length) {
+      const reach = g.reachFor(m), d = g.dungeon;
+      let best = -1, bd = Infinity;
+      for (let i = 0; i < d.n; i++) {
+        if (!reach || reach[i] === Infinity) continue;
+        const [x, y] = d.xy(i);
+        for (const f of foes) { const [fx, fy] = d.xy(f.tile), dd = Math.hypot(fx - x, fy - y); if (dd < bd) { bd = dd; best = i; } }
+      }
+      if (best >= 0 && best !== m.tile) { g.tap(best); g.tap(best); await settle(g); continue; }
+      m.moved = true;
+    }
+    const shot = foes.map((f) => g.planAttack(m, f)).find((p) => p.ok);
+    if (shot) { g.attackPlan = shot; g.confirmAttack(); await settle(g); continue; }
+    m.acted = true; g.afterAction(m);
+  }
+}
+
+// The surface first: deal with the hobgoblins, fix the rope, climb down.
+async function descend(g) {
+  for (let k = 0; k < 50 && g.L.id === 'surface'; k++) {
+    if (g.mode === 'encounter') { await fight(g); continue; }
+    const hob = g.foes.find((f) => f.alive);
+    if (hob) { g.tap(hob.tile); await settle(g); continue; }
+    const ids = g.actions().map((a) => a.id);
+    if (ids.includes('rope')) { g.act('rope'); continue; }
+    if (ids.includes('climb')) { g.act('climb'); await settle(g); continue; }
+    const hole = g.dungeon.links[0].a, [hx, hy] = g.dungeon.xy(hole), goal = g.dungeon.idx(hx + 1, hy);
+    const p = g.plan(goal);
+    if (p) { g.go(p); await settle(g); }
+  }
+}
+
+export async function explore(seed) {
+  const g = new Game({ ui, seed });
+  await descend(g);
+  const d = g.dungeon;
   const failed = new Set(), searchedAt = [];
   let passes = 0;
   const near = (i, list, r) => { const [x, y] = d.xy(i); return list.some((j) => { const [a, b] = d.xy(j); return Math.hypot(a - x, b - y) <= r; }); };
@@ -26,6 +78,8 @@ export function explore(seed) {
     }
   };
   for (let step = 0; step < 1500; step++) {
+    if (g.mode === 'encounter') { await fight(g); continue; }
+    if (g.mode !== 'explore') break;
     keepLit();
     // a door the party is standing at: open it, or deal with its lock
     const door = g.activeDoor();
@@ -35,7 +89,7 @@ export function explore(seed) {
       if (door.key && door.key !== 'lever') { g.act('smash'); continue; }
       if (!door.key && !(door.opensFrom >= 0 && !g.adjacentTo(door.i).some((m) => m.tile === door.opensFrom)) && (g.searches.get(`try${door.i}`) || 0) < 12) {
         g.searches.set(`try${door.i}`, (g.searches.get(`try${door.i}`) || 0) + 1);
-        g.act('open'); continue;
+        g.act('open'); await settle(g); continue;
       }
     }
     if (g.actions().some((a) => a.id === 'lever')) { g.act('lever'); continue; }
@@ -52,8 +106,15 @@ export function explore(seed) {
       const p = g.plan(i);
       if (!p || p.blocked || (p.path.length < 2 && p.door < 0)) { failed.add(i); continue; }
       const before = g.exploredVersion;
-      g.go(p); settle(g);
+      g.go(p); await settle(g);
       if (g.exploredVersion === before && p.door < 0) failed.add(i);
+      // a door that won't open from here (the lever's, or the block from inside): give it up
+      // after a few tries, until something new is found
+      if (p.door >= 0 && !d.doors.get(p.door).open) {
+        const k = `walk${p.door}`, n = (g.searches.get(k) || 0) + 1;
+        g.searches.set(k, n);
+        if (n >= 4) failed.add(i);
+      }
       moved = true; break;
     }
     if (moved) continue;
@@ -71,12 +132,11 @@ export function explore(seed) {
       continue;
     }
     const p = g.plan(target);
-    if (p.path.length > 1) { g.go(p); settle(g); }
+    if (p.path.length > 1) { g.go(p); await settle(g); }
     searchedAt.push(target);
     const found = g.hidden().length;
-    for (let k = 0; k < 3 && g.hidden().length === found; k++) g.act('search');
-    if (g.hidden().length < found) { failed.clear(); }
+    for (let k = 0; k < 3 && g.hidden().length === found && g.mode === 'explore'; k++) { g.act('search'); await settle(g); }
+    if (g.hidden().length < found) failed.clear();
   }
   return g;
 }
-

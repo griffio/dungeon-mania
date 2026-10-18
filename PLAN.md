@@ -194,7 +194,7 @@ These names are decided (§12). We use them rather than the book's chapter 4 par
 
 | | **Brannoc**, Fighter | **Ysolde**, Magic-User | **Aldwin**, Cleric | **Fennick**, Thief |
 |---|---|---|---|---|
-| Key stats | STR 16 (+1/+1), CON 14 | INT 17, DEX 13 | WIS 16, STR 13 | DEX 17 (+2 AC, +2 missile) |
+| Key stats | STR 16 (+2/+2, the B/X table), CON 14 | INT 17, DEX 13 | WIS 16, STR 13 | DEX 17 (+2 AC, +2 missile) |
 | HP (Normal, L2) | ~15 | ~6 | ~10 | ~7 |
 | AC | 2 (plate + shield) | 9 | 4 (chain + shield) | 5 (leather + DEX) |
 | Encounter move | 4 tiles | 8 tiles | 4 tiles | 6 tiles |
@@ -581,7 +581,7 @@ The structure follows the chopper's `ai.js`: a state machine per unit, with grou
 | **M0** | **Scaffold and map**: copy the chopper core (util, input, camera, renderer skeleton), `trace-map.py`, curated `dungeon-data.js`, map validation tests | The dungeon renders as grey boxes. You can orbit it, and the pathfinding overlay works. **Done 2026-10-18** |
 | **M1** | **The look**: rock and floor geometry, **Gemini textures** (§8.4), torch point lights with flicker, grid shadows, fog of war and memory, cutaway walls, bloom | Walking one torch-bearer through the dark looks good on desktop and iPad at 40+ fps. **Torchlight, fixed lights, wall shadows, fog of war, cutaway walls, materials, atmosphere and the first 8 Gemini textures ($0.55) done 2026-10-18; the iPad pass still to do** |
 | **M2** | **Party and exploration**: 4 hero miniatures with procedural animation, group and solo movement, marching order, doors, secret doors and search (with the torch-lean hint), the dungeon clock, torches, automap | The whole dungeon can be explored with no combat. **Done 2026-10-18**: a test bot explores every room and finds every secret door and the lever, under fog, through the game's own actions. Pits are climbed through without risk, locks are picked or smashed (Odric's keys come in M5), and listening, traps and resting wait for M3–M4 |
-| **M3** | **Combat core**: encounter switch, surprise, initiative, move and act, attacks with the roll panel and 3D dice, damage, morale, downed state. Monsters for the first area: hobgoblins, bats, orcs, rats. Basic AI | The surface tutorial, the entrance and rooms 1–2 play end to end |
+| **M3** | **Combat core**: encounter switch, surprise, initiative, move and act, attacks with the roll panel and 3D dice, damage, morale, downed state. Monsters for the first area: hobgoblins, bats, orcs, rats. Basic AI | The surface tutorial, the entrance and rooms 1–2 play end to end. **Done 2026-10-18**: the surface is its own level (sunset, long sun shadows); the 40 ft tunnel is the climb down the hole (DEX checks, or Brannoc's rope), with the bats at its foot. The bot test now plays from the surface through every room, fighting the hobgoblins, bats, orcs and rats. Left for M4: Brannoc's zone of control, Dash and Withdraw, backstab, spells |
 | **M4** | **Magic and skills**: the spells in §4, Turn Undead, thief skills, traps, saves, status effects, scrolls and potions | Rooms 3–6, 18 and 19 play, including the slime, the pits and the goblin loop |
 | **M5** | **Full content**: Gemini portraits and bestiary cards, every room script, every monster model, Belisarius, Rosa, prisoners, keys and chests, the Arch-deaconess branch, the Odric set-piece, the sword and its hum, escape, re-alerting, endings and the tally | A complete crawl from surface to sword and back out |
 | **M6** | **Audio**: manifest, generation, narration, VO, SFX, music, reverb | Fully voiced, with a soundscape per room |

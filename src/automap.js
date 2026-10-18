@@ -19,7 +19,7 @@ export class Automap {
 
   draw(g) {
     const d = g.dungeon;
-    const key = [g.exploredVersion, g.visited.size, g.wallsVersion, g.fogOn, g.selected, ...g.party.map((m) => g.eyeOf(m))].join();
+    const key = [g.L.id, g.exploredVersion, g.visited.size, g.wallsVersion, g.fogOn, g.selected, ...g.party.map((m) => g.eyeOf(m))].join();
     if (key === this.key) return;
     this.key = key;
     const dpr = Math.min(2, window.devicePixelRatio || 1);

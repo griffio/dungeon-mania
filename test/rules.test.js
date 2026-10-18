@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { die, roll, mod, inSix, percent, doorChance, searchChance, minutesFor, clockText } from '../src/rules.js';
+import { die, roll, mod, inSix, percent, doorChance, searchChance, minutesFor, clockText, hitBase, attackRoll, hitChance, damage, moraleCheck, initiative, save, rangeMod } from '../src/rules.js';
 import { makeRng } from '../src/util.js';
 
 test('dice stay in range and cover every face', () => {
@@ -37,4 +37,44 @@ test('the clock: 120 ft of walking is one 10-minute turn', () => {
   assert.equal(minutesFor(24), 10);
   assert.deepEqual(clockText(0), { turn: 1, time: '0:00' });
   assert.deepEqual(clockText(75), { turn: 8, time: '1:15' });
+});
+
+const fixed = (...vals) => { let k = 0; return () => vals[k++ % vals.length]; };
+const d20 = (n) => (n - 1) / 20 + 0.001; // rng value that rolls n on a d20
+
+test('the B/X attack matrix: level 1-3 and 1 HD need 19 - AC; bigger monsters need less', () => {
+  assert.deepEqual([0.5, 1, 1.01, 2, 3, 4].map(hitBase), [19, 19, 18, 18, 17, 16]);
+  assert.equal(attackRoll(fixed(d20(13)), 19, 6).hit, true, 'an orc (AC 6) is hit on 13');
+  assert.equal(attackRoll(fixed(d20(12)), 19, 6).hit, false);
+  assert.equal(attackRoll(fixed(d20(11)), 19, 6, [{ label: 'STR', value: 2 }]).hit, true, '+2 lowers the roll needed to 11');
+  assert.equal(attackRoll(fixed(d20(20)), 19, -5).hit, true, 'a natural 20 always hits');
+  assert.equal(attackRoll(fixed(d20(1)), 19, 9, [{ label: 'big', value: 30 }]).hit, false, 'a natural 1 always misses');
+  assert.equal(hitChance(19, 6), 0.4);
+  assert.equal(hitChance(19, 2), 0.05 * 4, 'AC 2 needs 17: 17-20 is 4 in 20');
+});
+
+test('damage is at least 1', () => {
+  assert.equal(damage(() => 0, '1d6', -3), 1);
+  assert.equal(damage(() => 0.999, '1d8', 1), 9);
+});
+
+test('morale breaks on 2d6 over ML, and ML 12 never breaks', () => {
+  assert.equal(moraleCheck(() => 0.999, 8).broke, true, '12 > 8');
+  assert.equal(moraleCheck(() => 0, 8).broke, false, '2 is not over 8');
+  assert.equal(moraleCheck(() => 0.999, 12).broke, false);
+});
+
+test('initiative: the party wins ties', () => {
+  assert.equal(initiative(fixed(0.5, 0.5)).partyFirst, true);
+  assert.equal(initiative(fixed(0.1, 0.9)).partyFirst, false);
+});
+
+test('saving throws by class', () => {
+  assert.equal(save(fixed(d20(12)), 'Fighter', 'poison').ok, true);
+  assert.equal(save(fixed(d20(11)), 'Fighter', 'poison').ok, false);
+  assert.equal(save(fixed(d20(13)), 'Magic-User', 'paralysis').ok, true);
+});
+
+test('missile range bands', () => {
+  assert.deepEqual([3, 8, 12, 20, 40].map((d) => rangeMod(d, [8, 16, 32])), [1, 1, 0, -1, null]);
 });

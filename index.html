@@ -102,6 +102,43 @@ button { font-family: var(--head); color: var(--parch); cursor: pointer; touch-a
 #toggles button { min-width: 110px; min-height: 40px; padding: 4px 8px; background: var(--bg2); border: 1px solid var(--line); border-radius: 6px; font-size: 12px; letter-spacing: 0.06em; color: var(--dim); }
 #toggles button.on { color: var(--parch); border-color: var(--brass); box-shadow: 0 0 0 1px var(--brass) inset; }
 #toggles button kbd { font-family: var(--mono); font-size: 10px; color: var(--dim); margin-left: 4px; }
+/* encounters */
+.card.done { opacity: 0.7; }
+.card.downed { border-color: var(--bad); animation: blink 1s infinite; }
+.card.dead { opacity: 0.4; }
+.card .rl em { color: var(--bad); font-style: normal; }
+.card .rl s { color: var(--dim); }
+@keyframes blink { 50% { opacity: 0.55; } }
+#roundbar { position: absolute; top: calc(10px + var(--sa-t)); left: 50%; transform: translateX(-50%); min-width: 260px; padding: 6px 14px; text-align: center; display: none; }
+#roundbar.show { display: block; }
+#roundbar .rd { font-family: var(--head); font-size: 18px; color: var(--brass); letter-spacing: 0.06em; }
+#roundbar .rd span { font-family: var(--text); font-style: italic; color: var(--parch); margin-left: 8px; }
+#roundbar .init { font-size: 13px; color: var(--dim); }
+#roundbar .foes { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-top: 3px; }
+#roundbar .foes span { position: relative; font-size: 13px; padding: 1px 6px 4px; border: 1px solid rgba(212,85,63,0.4); border-radius: 3px; }
+#roundbar .foes i { position: absolute; left: 0; bottom: 0; height: 3px; background: var(--bad); }
+#attack { position: absolute; right: calc(12px + var(--sa-r)); bottom: calc(100px + var(--sa-b)); width: 280px; padding: 10px 12px; display: none; }
+#attack.show { display: block; }
+#atk-t { font-family: var(--head); font-size: 15px; color: var(--parch); }
+#atk-t span { display: block; font-family: var(--text); font-size: 13px; font-style: italic; color: var(--dim); }
+#atk-l { margin: 6px 0; font-size: 14px; color: var(--dim); }
+#atk-l .need { color: var(--brass); font-size: 16px; margin-top: 4px; }
+#atk-l .no { color: var(--bad); }
+#atk-l .res { font-size: 17px; }
+#atk-l .res.hit { color: var(--good); } #atk-l .res.miss { color: var(--dim); }
+#attack .btns { display: flex; gap: 6px; }
+#attack .btns button { flex: 1; min-height: 40px; background: var(--bg2); border: 1px solid var(--line); border-radius: 6px; font-size: 14px; letter-spacing: 0.08em; }
+#atk-go { border-color: var(--bad) !important; }
+#atk-go:disabled { opacity: 0.35; }
+#floats { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+.float { position: absolute; left: 0; top: 0; font-family: var(--head); font-weight: 700; font-size: 22px; text-shadow: 0 2px 5px #000, 0 0 2px #000; white-space: nowrap; will-change: transform, opacity; }
+.float.die { color: #f4ead2; font-size: 30px; text-shadow: 0 0 10px rgba(0,0,0,0.9), 0 2px 4px #000; }
+.float.die.d6 { font-size: 24px; color: #f0c27a; }
+.float.dmg { color: #ff9a5a; } .float.miss { color: #b5a990; font-size: 17px; } .float.kill { color: #ff4d3d; font-size: 18px; }
+#banner { position: fixed; top: 22%; left: 50%; transform: translateX(-50%); font-family: var(--head); font-size: 34px; color: var(--parch); letter-spacing: 0.1em;
+  text-shadow: 0 3px 12px #000, 0 0 3px #000; pointer-events: none; opacity: 0; white-space: nowrap; }
+#banner.show { animation: bannerin 2.6s ease-out forwards; }
+@keyframes bannerin { 0% { opacity: 0; transform: translate(-50%, 10px); } 15% { opacity: 1; transform: translate(-50%, 0); } 75% { opacity: 1; } 100% { opacity: 0; } }
 @media (max-width: 1100px) {
   #actions { left: calc(12px + var(--sa-l)); bottom: calc(150px + var(--sa-b)); justify-content: center; }
 }
@@ -150,7 +187,12 @@ button { font-family: var(--head); color: var(--parch); cursor: pointer; touch-a
   </div>
   <div id="info" class="panel"></div>
   <div id="actions"></div>
+  <div id="roundbar" class="panel"></div>
+  <div id="attack" class="panel"><div id="atk-t"></div><div id="atk-l"></div><div class="btns"><button id="atk-x">Cancel</button><button id="atk-go">Attack</button></div></div>
 </div>
+<div id="floats"></div>
+<div id="banner"></div>
+<div id="end" class="screen"><div class="howbox"><div class="res"></div><button id="restart" class="big">Begin again</button></div></div>
 
 <div id="howto" class="screen"><div class="howbox">
   <h2>Exploring Kollchap</h2>

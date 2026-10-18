@@ -61,7 +61,7 @@ struct Scene {
   camUp: vec4f,
   info: vec4f,      // mapW, mapH, time, nLights
   keyDir: vec4f,    // w: 1 when fog of war is on
-  keyCol: vec4f,
+  keyCol: vec4f,    // w: 1 when the key light is the sun, casting shadows
   sky: vec4f,       // ambient from above
   ground: vec4f,    // ambient from below
   focus: vec4f,     // cutaway: focus x, z; inner radius (walls at the knee), outer (full height); 0 = off
@@ -71,7 +71,9 @@ struct Scene {
 @group(0) @binding(0) var<uniform> S: Scene;
 // one texel per tile: bit k of (r, g) is set if light k (or 32 + k) reaches the tile
 @group(0) @binding(1) var lightMask: texture_2d<u32>;
-// one texel per tile: 1 where light can't pass (rock, closed doors)
+// one texel per tile: r = 1 where light can't pass (rock, closed doors); g = how tall the tile
+// stands, in units of 4, and b = the radius of a round thing on it (0: the whole tile), for the
+// sun's shadows
 @group(0) @binding(2) var wallTex: texture_2d<f32>;
 // one texel per tile, filtered: r = visible now, g = explored
 @group(0) @binding(3) var fogTex: texture_2d<f32>;
@@ -209,12 +211,36 @@ fn lit(p: vec2f, l: vec2f) -> bool {
   return true;
 }
 
+// The sun's shadow: step across the grid toward the sun from p, and see whether anything along
+// the way stands taller than the ray is high there. Low evening sun, so the shadows run long.
+fn sunlit(wp: vec3f, Ld: vec3f) -> f32 {
+  let flat = length(Ld.xz);
+  if (flat < 0.01) { return 1.0; }
+  let dir = Ld.xz / flat;
+  let rise = Ld.y / flat; // height gained per tile travelled
+  let own = vec2i(floor(wp.xz));
+  for (var k = 1; k <= 48; k++) {
+    let t = f32(k) * 0.25;
+    let p = wp.xz + dir * t;
+    let cell = vec2i(floor(p));
+    if (any(cell < vec2i(0)) || any(cell >= vec2i(S.info.xy))) { return 1.0; }
+    if (all(cell == own)) { continue; }
+    let w = textureLoad(wallTex, cell, 0);
+    // a round column or canopy only shades where the ray passes within its radius
+    let inside = w.b < 0.01 || length(fract(p) - 0.5) < w.b;
+    if (inside && w.g * 4.0 > wp.y + t * rise) { return 0.0; }
+  }
+  return 1.0;
+}
+
 fn shade(wp: vec3f, N: vec3f, base: vec3f, spec: f32, gloss: f32) -> vec3f {
   let V = normalize(S.camPos.xyz - wp);
   let Ld = normalize(S.keyDir.xyz);
   var diff = mix(S.ground.rgb, S.sky.rgb, N.y * 0.5 + 0.5);
-  diff += S.keyCol.rgb * max(dot(N, Ld), 0.0);
-  var sp = S.keyCol.rgb * pow(max(dot(N, normalize(Ld + V)), 0.0), gloss) * spec;
+  var key = max(dot(N, Ld), 0.0);
+  if (S.keyCol.w > 0.5 && key > 0.0) { key *= sunlit(wp + N * 0.03, Ld); }
+  diff += S.keyCol.rgb * key;
+  var sp = S.keyCol.rgb * pow(max(dot(N, normalize(Ld + V)), 0.0), gloss) * spec * step(0.001, key);
   let cell = clamp(vec2i(floor(wp.xz)), vec2i(0), vec2i(S.info.xy) - 1);
   // the top of a wall tile is solid rock under the ceiling: no lamp or torch reaches it
   // (only matters with low walls, when the tops face the lights)
@@ -494,6 +520,20 @@ function coneMesh(seg = 14) {
   }
   return new Float32Array(v);
 }
+// Icosahedron, the d20: centred on the origin (so it tumbles about its middle), radius 0.5,
+// with flat faces.
+function icoMesh() {
+  const p = (1 + Math.sqrt(5)) / 2, k = 0.5 / Math.hypot(1, p);
+  const V = [[-1, p, 0], [1, p, 0], [-1, -p, 0], [1, -p, 0], [0, -1, p], [0, 1, p], [0, -1, -p], [0, 1, -p], [p, 0, -1], [p, 0, 1], [-p, 0, -1], [-p, 0, 1]].map((v) => v.map((c) => c * k));
+  const F = [[0, 11, 5], [0, 5, 1], [0, 1, 7], [0, 7, 10], [0, 10, 11], [1, 5, 9], [5, 11, 4], [11, 10, 2], [10, 7, 6], [7, 1, 8],
+    [3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8], [3, 8, 9], [4, 9, 5], [2, 4, 11], [6, 2, 10], [8, 6, 7], [9, 8, 1]];
+  const v = [];
+  for (const [a, b, c] of F) {
+    const n = [0, 1, 2].map((i) => (V[a][i] + V[b][i] + V[c][i]) / 3), l = Math.hypot(...n);
+    for (const i of [a, b, c]) v.push(...V[i], n[0] / l, n[1] / l, n[2] / l);
+  }
+  return new Float32Array(v);
+}
 function sphereMesh(seg = 12, rings = 8) {
   const v = [];
   const pt = (r, s) => {
@@ -534,7 +574,7 @@ export class FlatList {
     for (let k = 0; k < s; k++) f[o + k] = arguments[k];
   }
 }
-export const MESHES = ['box', 'cyl', 'sph', 'cone'];
+export const MESHES = ['box', 'cyl', 'sph', 'cone', 'ico'];
 
 export class Renderer {
   async init(canvas) {
@@ -552,7 +592,7 @@ export class Renderer {
     mod.getCompilationInfo?.().then((info) => { for (const m of info.messages) if (m.type === 'error') console.error('WGSL', m.lineNum, m.message); });
 
     this.meshes = {};
-    for (const [name, data] of [['box', boxMesh()], ['cyl', cylMesh()], ['sph', sphereMesh()], ['cone', coneMesh()], ['tube', cylMesh(20, false)]]) {
+    for (const [name, data] of [['box', boxMesh()], ['cyl', cylMesh()], ['sph', sphereMesh()], ['cone', coneMesh()], ['ico', icoMesh()], ['tube', cylMesh(20, false)]]) {
       const buf = device.createBuffer({ size: data.byteLength, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST });
       device.queue.writeBuffer(buf, 0, data);
       this.meshes[name] = { buf, count: data.length / 6 };
@@ -744,14 +784,15 @@ export class Renderer {
     return b;
   }
 
-  // The tile grid the lighting works on. walls: Uint8Array, 255 where light can't pass.
+  // The tile grid the lighting works on. walls: Uint8Array, four bytes a tile: 255 where light
+  // can't pass, the tile's height (x 255/4), the radius of a round thing on it (x 255), unused.
   setMap(w, h, walls) {
     if (this.mapW !== w || this.mapH !== h) {
       this.mapW = w; this.mapH = h;
       this.maskTex?.destroy(); this.wallTex?.destroy(); this.fogTex?.destroy();
       this.fogTex = this.device.createTexture({ size: [w, h], format: 'rgba8unorm', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
       this.maskTex = this.device.createTexture({ size: [w, h], format: 'rg32uint', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
-      this.wallTex = this.device.createTexture({ size: [w, h], format: 'r8unorm', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
+      this.wallTex = this.device.createTexture({ size: [w, h], format: 'rgba8unorm', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
       this.mask = new Uint32Array(w * h * 2);
       this.mainBG = this.device.createBindGroup({ layout: this.mainBGL, entries: [
         { binding: 0, resource: { buffer: this.ubuf } },
@@ -766,9 +807,9 @@ export class Renderer {
       ] });
       this.fogVersion = -1;
     }
-    // rows of an r8 texture upload in steps of 256 bytes
-    const row = Math.ceil(w / 256) * 256, data = new Uint8Array(row * h);
-    for (let y = 0; y < h; y++) data.set(walls.subarray(y * w, y * w + w), y * row);
+    // rows of a texture upload in steps of 256 bytes
+    const row = Math.ceil((w * 4) / 256) * 256, data = new Uint8Array(row * h);
+    for (let y = 0; y < h; y++) data.set(walls.subarray(y * w * 4, (y + 1) * w * 4), y * row);
     this.device.queue.writeTexture({ texture: this.wallTex }, data, { bytesPerRow: row }, [w, h]);
   }
 
@@ -865,7 +906,7 @@ export class Renderer {
   // frame: { viewProj, camPos, camRight, camUp, mapW, mapH, time, keyDir, keyCol, sky, ground,
   //          lights: [[x,y,z,r, cr,cg,cb,intensity]], staticSets: {box,cyl,sph}, staticVersion,
   //          staticDecals, staticDecalsVersion, dynSets: {box,cyl,sph}, decals, xray,
-  //          walls (Uint8Array per tile, 255 = blocks light), wallsVersion,
+  //          walls (Uint8Array, 4 per tile: blocks light, height, round radius), wallsVersion, sun (key light casts shadows),
   //          fog (Uint8Array, rgba per tile), fogVersion, fogOn, focus: [x, z, inner, outer],
   //          inlay: [x, z, r, 0], shafts (Instances, on the open tube), motes (FlatList of 8) }
   render(fr) {
@@ -875,7 +916,7 @@ export class Renderer {
     u.set([...fr.camPos, 1], 16); u.set([...fr.camRight, 0], 20); u.set([...fr.camUp, 0], 24);
     const nl = Math.min(fr.lights.length, MAX_LIGHTS);
     u.set([fr.mapW, fr.mapH, fr.time, nl], 28);
-    u.set([...fr.keyDir, fr.fogOn ? 1 : 0], 32); u.set([...fr.keyCol, 0], 36); u.set([...fr.sky, 0], 40); u.set([...fr.ground, 0], 44);
+    u.set([...fr.keyDir, fr.fogOn ? 1 : 0], 32); u.set([...fr.keyCol, fr.sun ? 1 : 0], 36); u.set([...fr.sky, 0], 40); u.set([...fr.ground, 0], 44);
     u.set(fr.focus, 48); u.set(fr.inlay, 52);
     for (let k = 0; k < nl; k++) u.set(fr.lights[k], 56 + k * 8);
     d.queue.writeBuffer(this.ubuf, 0, u);
