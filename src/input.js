@@ -1,5 +1,4 @@
 import { clamp, angleDiff } from './util.js';
-import { TILE } from './dungeon.js';
 
 export const MIN_DIST = 7, MAX_DIST = 100;
 
@@ -102,6 +101,7 @@ export class Input {
     const { o, d } = g.camera.ray(px - r.left, py - r.top, r.width, r.height);
     const dg = g.dungeon, wallH = g.scene.wallH;
     if (d[1] >= 0) return -1;
+    // walls in the cutaway are lower than wallH, so the start point is still above everything
     // start where the ray comes down to the wall tops: nothing above them can be hit
     for (let t = Math.max(0, (o[1] - wallH - 0.05) / -d[1]); t < 250; t += 0.08) {
       const x = o[0] + d[0] * t, y = o[1] + d[1] * t, z = o[2] + d[2] * t;
@@ -109,7 +109,7 @@ export class Input {
       const tx = Math.floor(x), tz = Math.floor(z);
       if (!dg.inside(tx, tz)) { if (y < 0) break; continue; }
       const i = dg.idx(tx, tz);
-      if (y <= (TILE[dg.t[i]].walk ? g.scene.floorH(i) : wallH) + 0.02) return i;
+      if (y <= g.surfaceH(i) + 0.02) return i;
     }
     return -1;
   }

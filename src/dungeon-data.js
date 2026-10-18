@@ -174,5 +174,13 @@ export const LIGHTS = [
   { kind: 'daylight', at: [50.6, 14.5], h: 1.4, room: 'entrance' },
 ];
 
+// Shafts of daylight (god rays): the hole in room 23's ceiling, and the light falling down the
+// entrance tunnel. at: where the shaft meets the floor (tile units); len: its length; lean:
+// radians from vertical, toward +x (yaw turns that direction); r: radius.
+export const SHAFTS = [
+  { at: [12.9, 30.4], len: 2.8, lean: -0.32, yaw: 0, r: 0.9, col: [1, 0.9, 0.7], i: 0.6 },
+  { at: [49.6, 14.5], len: 2.4, lean: 0.85, yaw: 0, r: 0.45, col: [0.75, 0.82, 1], i: 0.22 },
+];
+
 // Room 12's floor markings: a huge green circle, white in the corners.
 export const CIRCLE_12 = { at: [13, 18], r: 5.2 };

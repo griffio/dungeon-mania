@@ -124,3 +124,32 @@ test('sight: rock and closed doors block, bars and open doors do not', () => {
   assert.ok(tiny.los(2, 2, 4, 2), 'open door');
   door.open = false;
 });
+
+test('light: reach and line of sight, stopped by rock and closed doors', () => {
+  const lit = tiny.light([{ x: 1.5, z: 1.5, reach: 6 }]);
+  assert.equal(lit[tiny.idx(2, 2)], 1);
+  assert.equal(lit[tiny.idx(3, 2)], 1, 'the door itself is lit');
+  assert.equal(lit[tiny.idx(4, 2)], 0, 'not past the closed door');
+  assert.equal(lit[tiny.idx(4, 1)], 0, 'not through rock');
+  assert.equal(lit[tiny.idx(3, 1)], 0, 'rock is never "lit"');
+  assert.equal(tiny.light([{ x: 1.5, z: 1.5, reach: 1 }])[tiny.idx(1, 3)], 0, 'beyond reach');
+});
+
+test('sight: lit tiles in view, the dark only next to you, and the walls around what you see', () => {
+  const eye = tiny.idx(1, 1);
+  const seen = tiny.sight(eye, tiny.light([{ x: 1.5, z: 1.5, reach: 6 }]));
+  assert.equal(seen[tiny.idx(1, 4)], 1);
+  assert.equal(seen[tiny.idx(4, 2)], 0, 'behind the closed door');
+  assert.equal(seen[tiny.idx(0, 0)], 1, 'the wall beside a seen tile');
+  assert.equal(seen[tiny.idx(4, 1)], 0, 'rock next to nothing seen');
+  const dark = tiny.sight(eye, new Uint8Array(tiny.n));
+  assert.equal(dark[tiny.idx(2, 2)], 1, 'next to you, even unlit');
+  assert.equal(dark[tiny.idx(1, 3)], 0, 'two tiles away in the dark');
+});
+
+test('paths can be limited to known tiles', () => {
+  const known = new Uint8Array(tiny.n).fill(1);
+  assert.ok(tiny.pathTo(tiny.idx(1, 1), tiny.idx(1, 4), { known }));
+  known[tiny.idx(1, 3)] = 0;
+  assert.equal(tiny.pathTo(tiny.idx(1, 1), tiny.idx(1, 4), { known }), null);
+});

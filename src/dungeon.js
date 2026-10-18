@@ -119,10 +119,11 @@ export class Dungeon {
   // Can a walker go from tile a into its neighbour b? opts:
   //   secrets: undiscovered secret doors count as found     keys: Set of key ids held
   //   pits: walk through pits (climbing down and up)        closed: closed doors are passable (they get opened)
-  //   ignore: Set of door tiles treated as walls
+  //   ignore: Set of door tiles treated as walls          known: only tiles with known[i] set (explored)
   enter(a, b, opts) {
     const d = this.tile(b);
     if (!d.walk) return false;
+    if (opts.known && !opts.known[b]) return false;
     if (d.hazard && !opts.pits) return false;
     if (d.door) {
       const door = this.doors.get(b);
@@ -218,6 +219,47 @@ export class Dungeon {
       if ((x !== bx || y !== by) && !this.clear(x, y)) return false;
     }
     return true;
+  }
+
+  // Tiles bright enough to see by: within a light's reach and in its line of sight (from the
+  // light's tile). lights: [{ x, z, reach }] in tile units. Sets 1s in out and returns it.
+  light(lights, out = new Uint8Array(this.n)) {
+    const { W, H } = this;
+    for (const { x: lx, z: lz, reach } of lights) {
+      const tx = Math.floor(lx), tz = Math.floor(lz), r2 = reach * reach;
+      for (let y = Math.max(0, Math.floor(lz - reach)); y <= Math.min(H - 1, Math.floor(lz + reach)); y++) {
+        for (let x = Math.max(0, Math.floor(lx - reach)); x <= Math.min(W - 1, Math.floor(lx + reach)); x++) {
+          const i = y * W + x, dx = x + 0.5 - lx, dz = y + 0.5 - lz;
+          if (out[i] || this.t[i] === T.ROCK || dx * dx + dz * dz > r2) continue;
+          if (this.los(tx, tz, x, y)) out[i] = 1;
+        }
+      }
+    }
+    return out;
+  }
+
+  // What someone on tile `eye` sees (PLAN.md 3.5): lit tiles in line of sight, plus the tiles
+  // next to them even in the dark. Rock beside a seen tile counts as seen: its wall face shows.
+  sight(eye, lit, out = new Uint8Array(this.n)) {
+    const { W, n } = this, ex = eye % W, ey = (eye - ex) / W;
+    out.fill(0);
+    for (let i = 0; i < n; i++) {
+      if (this.t[i] === T.ROCK) continue;
+      const x = i % W, y = (i - x) / W;
+      const near = Math.abs(x - ex) <= 1 && Math.abs(y - ey) <= 1;
+      if ((lit[i] || near) && this.los(ex, ey, x, y)) out[i] = 1;
+    }
+    for (let i = 0; i < n; i++) {
+      if (this.t[i] !== T.ROCK) continue;
+      const x = i % W, y = (i - x) / W;
+      for (let k = 0; k < 8 && !out[i]; k++) {
+        const nx = x + N8[k][0], ny = y + N8[k][1];
+        if (!this.inside(nx, ny)) continue;
+        const j = ny * W + nx;
+        if (out[j] && this.t[j] !== T.ROCK) out[i] = 1;
+      }
+    }
+    return out;
   }
 }
 

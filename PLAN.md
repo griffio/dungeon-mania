@@ -378,9 +378,9 @@ Hand-authored, not procedural, because the whole point is the book's dungeon. Th
 | Key light | Moon directional and a cached shadow map | **Point lights only**: party torches and the lantern, the fixed lights in §3.5 (braziers, the lamp, candles, the sconce, the healing pool glow) and sun shafts |
 | Shadows | 2048 shadow map | **Grid-raymarched shadows.** Walls sit on tiles, so each fragment DDA-steps through a wall-occupancy texture toward each nearby light. That gives exact, crisp wall shadows for every light at once, cheaply. Add a **single cube shadow map for the selected character's torch**, so figures cast moving shadows. It can be switched off on iPad. Units get blob or contact shadows |
 | Light binning | 32 lights, per-tile bitmask | Same system, 64 lights in two 32-bit words per tile. The torch **flickers** (out-of-step sines on intensity and position) and the flame bends toward undiscovered secret doors |
-| Occlusion | Rooftops seen from above | **Cutaway walls:** walls between the camera and the focus drop to knee height with a dithered edge. This works at any yaw, because the chopper's camera rotates 360° |
-| Materials | Asphalt, brick and wet streets | Hewn rock walls (jittered blocks), flagstones, cave rock (noise-displaced), oak doors with iron bands, the green circle and white corner inlays in room 12, frescoes in rooms 10 and 22, **water** (room 23: animated normals, sun glints, caustics on the walls) |
-| Atmosphere | Rain and bloom | Dust motes in torchlight, **god rays** (an additive cone with a noise-scrolled dust volume) in room 23 and the entrance, bloom on fire and spells, a cool blue grade in the dark and warm in the light, vignette and slight grain |
+| Occlusion | Rooftops seen from above | **Cutaway walls:** walls between the camera and the focus drop to knee height and rise back to full height across a ring, so the cut has a terraced edge. (A dithered edge was tried first, but the walls are hollow boxes, so dithering one away shows its empty inside.) This works at any yaw, because the chopper's camera rotates 360° |
+| Materials | Asphalt, brick and wet streets | Procedural first, textures add detail on top: hewn rock walls (running-bond blocks, each face cut slightly off true), Voronoi flagstones, cave rock (noise), oak doors with iron bands, the green circle and white corner inlays in room 12, frescoes in rooms 10 and 22, **water** (room 23: animated normals, sun glints, caustics on the walls) |
+| Atmosphere | Rain and bloom | Dust motes in torchlight (fixed to the world, lit by the torch), **god rays** (an additive open tube with a noise-scrolled dust volume) in room 23 and the entrance, bloom on fire and spells, a cool blue grade in the dark and warm in the light, vignette and slight grain |
 | Fog of war | Visible / explored / AO texture | Same texture, but "visible" = LOS ∧ lit. Explored areas are drawn as a dim, desaturated memory |
 | Extras | — | **3D dice** overlay (an instanced icosahedron and cube, tumbled to the predetermined face) |
 
@@ -507,6 +507,8 @@ The chopper makes no runtime API calls. Here, only the statue oracle earns one:
 
 **What gets generated**
 - **Textures (about 25):** hewn rock wall, flagstones, cave rock, rubble, oak planks, iron bands, straw, bone litter, moss, the green and white inlay (room 12), two fresco panels (rooms 10 and 22), and water normals.
+  - They are **surface detail only** (stone grain, chisel marks, wood grain, rust), with no joints or edges of their own. The shader lays out the blocks, flagstones and planks and multiplies the texture on top, so a texture can never misalign with the layout and repetition is hard to spot. The frescoes are the exception: they are pictures, placed as panels.
+  - Done in M1: stone, flag, cave, oak, wood, iron, greenstone and marble, for $0.55. Water stays procedural.
 - **Portraits (about 12):** the 4 heroes, the 2 recruits and about 6 NPCs.
 - **Bestiary cards:** one per monster type. Everything is drawn in one painted fantasy-illustration style.
 
@@ -577,7 +579,7 @@ The structure follows the chopper's `ai.js`: a state machine per unit, with grou
 | # | Milestone | Done when |
 |---|---|---|
 | **M0** | **Scaffold and map**: copy the chopper core (util, input, camera, renderer skeleton), `trace-map.py`, curated `dungeon-data.js`, map validation tests | The dungeon renders as grey boxes. You can orbit it, and the pathfinding overlay works. **Done 2026-10-18** |
-| **M1** | **The look**: rock and floor geometry, **Gemini textures** (§8.4), torch point lights with flicker, grid shadows, fog of war and memory, cutaway walls, bloom | Walking one torch-bearer through the dark looks good on desktop and iPad at 40+ fps. **Torchlight, fixed lights and wall shadows done 2026-10-18** |
+| **M1** | **The look**: rock and floor geometry, **Gemini textures** (§8.4), torch point lights with flicker, grid shadows, fog of war and memory, cutaway walls, bloom | Walking one torch-bearer through the dark looks good on desktop and iPad at 40+ fps. **Torchlight, fixed lights, wall shadows, fog of war, cutaway walls, materials, atmosphere and the first 8 Gemini textures ($0.55) done 2026-10-18; the iPad pass still to do** |
 | **M2** | **Party and exploration**: 4 hero miniatures with procedural animation, group and solo movement, marching order, doors, secret doors and search (with the torch-lean hint), the dungeon clock, torches, automap | The whole dungeon can be explored with no combat |
 | **M3** | **Combat core**: encounter switch, surprise, initiative, move and act, attacks with the roll panel and 3D dice, damage, morale, downed state. Monsters for the first area: hobgoblins, bats, orcs, rats. Basic AI | The surface tutorial, the entrance and rooms 1–2 play end to end |
 | **M4** | **Magic and skills**: the spells in §4, Turn Undead, thief skills, traps, saves, status effects, scrolls and potions | Rooms 3–6, 18 and 19 play, including the slime, the pits and the goblin loop |

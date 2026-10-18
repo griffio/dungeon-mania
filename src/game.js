@@ -1,33 +1,28 @@
 import { Dungeon, TILE } from './dungeon.js';
-import { Camera, Instances, FlatList } from './renderer.js';
+import { Camera, Instances, FlatList, KNEE } from './renderer.js';
 import { SceneBuilder } from './scene.js';
-import { clamp, lerp } from './util.js';
-import { LIGHTS } from './dungeon-data.js';
+import { clamp, lerp, hash2 } from './util.js';
+const smoothstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+import { LIGHTS, SHAFTS, CIRCLE_12 } from './dungeon-data.js';
+import { LIGHT_KINDS } from './defs.js';
 import { MIN_DIST, MAX_DIST } from './input.js';
 
-// The map viewer (M0) lit by torchlight (M1). One token stands in for the party and carries
-// the torch: hover or tap a tile to preview the path to it, tap the same tile again to walk
-// there. The full game grows out of this class.
+// The map viewer (M0) lit by torchlight under fog of war (M1). One token stands in for the
+// party and carries the torch: hover or tap a tile to preview the path to it, tap the same tile
+// again to walk there. The full game grows out of this class.
 const KEY_DIR = [-0.45, 0.85, 0.3];
-// The dungeon is dark; "map light" adds the M0 overview light back for looking at the map.
+// The dungeon is dark; "map light" adds the M0 overview light back and lifts the fog, for
+// looking at the whole map.
 const MAP_LIGHT = { key: [0.55, 0.52, 0.46], sky: [0.32, 0.31, 0.3], ground: [0.1, 0.095, 0.09] };
 const DARK = { key: [0, 0, 0], sky: [0.012, 0.013, 0.018], ground: [0.004, 0.004, 0.005] };
-// Light sources: colour, radius in tiles (where they fade out), intensity, how much they flicker.
-// A torch lights 30 ft (6 tiles) usefully and fades out just beyond (PLAN.md 3.5).
-const LIGHT_KINDS = {
-  torch: { col: [1, 0.6, 0.28], r: 7, i: 2.4, flicker: 1 },
-  brazier: { col: [0.55, 1, 0.45], r: 7.5, i: 2.2, flicker: 1 },
-  lamp: { col: [1, 0.68, 0.36], r: 5, i: 1.6, flicker: 0.4 },
-  candles: { col: [1, 0.72, 0.42], r: 4, i: 1.1, flicker: 0.6 },
-  sconce: { col: [1, 0.62, 0.3], r: 5.5, i: 1.8, flicker: 1 },
-  pool: { col: [0.3, 0.95, 0.65], r: 2.6, i: 0.9, pulse: 1 },
-  sun: { col: [1, 0.94, 0.82], r: 6.5, i: 2.4 },
-  daylight: { col: [0.72, 0.8, 0.95], r: 4.5, i: 1.4 },
-};
 // Fire: a few out-of-step sines, so no two flames move together.
 const flicker = (t, s) => 0.08 * Math.sin(t * 7.3 + s) + 0.05 * Math.sin(t * 17.9 + s * 2.1) + 0.04 * Math.sin(t * 31.3 + s * 5.7);
 const WALK_SPEED = 5; // tiles per second
 const FT_PER_TILE = 5, FT_PER_TURN = 120; // exploration: 120 ft per 10-minute turn
+const FOG_RATE = 8; // how fast tiles fade in and out of sight, per second
+// Cutaway around the camera's focus: walls inside CUT_IN drop to knee height and rise back to
+// full height by CUT_OUT. Zoomed out past CUT_MAX_DIST the walls barely hide anything, so it's off.
+const CUT_IN = 4.5, CUT_OUT = 6.5, CUT_MAX_DIST = 32;
 
 export class Game {
   constructor({ ui }) {
@@ -39,6 +34,8 @@ export class Game {
     this.dyn = { box: new Instances(64), cyl: new Instances(64), sph: new Instances(64) };
     this.decals = new FlatList(16, 256);
     this.xray = new FlatList(16, 256);
+    this.motes = new FlatList(8, 256);
+    this.shafts = new Instances(4);
     this.time = 0;
     const [x, y] = this.dungeon.xy(this.dungeon.start);
     this.token = { tile: this.dungeon.start, x: x + 0.5, z: y + 0.5, route: null, k: 0 };
@@ -46,7 +43,98 @@ export class Game {
     this.staticDecalsVersion = 0;
     this.rebuild();
     this.updateWalls();
+    for (const sh of SHAFTS) {
+      const [x, z] = sh.at, i = this.dungeon.idx(Math.floor(x), Math.floor(z));
+      this.shafts.add(x, this.scene.floorH(i), z, sh.r * 2, sh.len, sh.r * 2, sh.yaw, sh.col, 0, sh.i, -sh.lean);
+    }
+    // fog of war: what the party sees now, what it has seen, and the eased values drawn
+    const n = this.dungeon.n;
+    this.fixedLit = this.dungeon.light(LIGHTS.map((l) => ({ x: l.at[0], z: l.at[1], reach: LIGHT_KINDS[l.kind].reach })));
+    this.lit = new Uint8Array(n); this.visible = new Uint8Array(n); this.explored = new Uint8Array(n);
+    this.fogCur = new Float32Array(n * 2); this.fog = new Uint8Array(n * 4); this.fogVersion = 0; this.exploredVersion = 0;
+    this.eye = -1;
+    this.updateSight();
   }
+
+  // The tile the party sees from: where the token stands, or is passing through.
+  eyeTile() {
+    const tk = this.token;
+    return tk.route ? tk.route[Math.round(Math.min(tk.k, tk.route.length - 1))] : tk.tile;
+  }
+
+  // Recompute sight from the party's tile: the fixed lights plus the torch, then what's in view.
+  updateSight() {
+    const d = this.dungeon, eye = (this.eye = this.eyeTile()), [x, y] = d.xy(eye);
+    this.lit.set(this.fixedLit);
+    d.light([{ x: x + 0.5, z: y + 0.5, reach: LIGHT_KINDS.torch.reach }], this.lit);
+    d.sight(eye, this.lit, this.visible);
+    let found = false;
+    for (let i = 0; i < d.n; i++) if (this.visible[i] && !this.explored[i]) { this.explored[i] = 1; found = true; }
+    if (found) { this.exploredVersion++; this.ui.viewKey = null; }
+  }
+
+  // Ease each tile's fog toward its target so things fade into and out of sight.
+  updateFog(dt) {
+    const k = 1 - Math.exp(-dt * FOG_RATE), cur = this.fogCur, fog = this.fog;
+    let changed = false;
+    for (let i = 0; i < this.dungeon.n; i++) {
+      for (let c = 0; c < 2; c++) {
+        const want = c ? this.explored[i] : this.visible[i], v = cur[i * 2 + c];
+        if (v === want) continue;
+        const nv = Math.abs(want - v) < 0.01 ? want : v + (want - v) * k;
+        cur[i * 2 + c] = nv; fog[i * 4 + c] = nv * 255; changed = true;
+      }
+    }
+    if (changed) this.fogVersion++;
+  }
+
+  get fogOn() { return !this.view.mapLight; }
+
+  // Dust motes hanging in the torchlight: a few per tile near the party, fixed to the world and
+  // drifting slowly down, shown by how much torchlight reaches them. Only in sight.
+  addMotes(torch) {
+    const d = this.dungeon, out = this.motes, t = this.time, [lx, ly, lz, r] = torch;
+    out.clear();
+    const x0 = Math.max(0, Math.floor(lx - 4)), x1 = Math.min(d.W - 1, Math.floor(lx + 4));
+    const z0 = Math.max(0, Math.floor(lz - 4)), z1 = Math.min(d.H - 1, Math.floor(lz + 4));
+    for (let y = z0; y <= z1; y++) for (let x = x0; x <= x1; x++) {
+      const i = y * d.W + x;
+      if (!TILE[d.t[i]].walk || (this.fogOn && !this.visible[i])) continue;
+      for (let k = 0; k < 2; k++) {
+        const s = hash2(x * 7 + k, y * 13 - k), s2 = hash2(y * 5 + k, x * 3);
+        const px = x + s + 0.25 * Math.sin(t * 0.21 + s * 40), pz = y + s2 + 0.25 * Math.cos(t * 0.17 + s2 * 40);
+        const py = 0.15 + 1.75 * (1 - ((s * 3.7 + t * 0.025 * (0.5 + s2)) % 1));
+        const dd = (px - lx) ** 2 + (py - ly) ** 2 + (pz - lz) ** 2, q = 1 - dd / (r * r);
+        if (q <= 0) continue;
+        const tw = 0.55 + 0.45 * Math.sin(t * 1.3 + s * 30);
+        out.push(px, py, pz, 0.016, 1, 0.78, 0.5, q * q * tw * 0.9);
+      }
+    }
+  }
+
+  // The cutaway's focus and radii for the shader, [x, z, inner, outer]; inner 0 turns it off.
+  get focus() {
+    const c = this.camera, on = !this.view.lowWalls && c.dist < CUT_MAX_DIST;
+    return [c.tx, c.tz, on ? CUT_IN : 0, CUT_OUT];
+  }
+
+  // How far the wall at world (x, z) is lowered, 1 = to knee height: the shader's cutAt().
+  cutAmount(x, z) {
+    const [fx, fz, inner, outer] = this.focus, eye = this.camera._eye;
+    if (inner <= 0 || !eye) return 0;
+    const rx = x - fx, rz = z - fz, cx = eye[0] - fx, cz = eye[2] - fz, l = Math.hypot(cx, cz);
+    const along = l > 0.001 ? (rx * cx + rz * cz) / l : rz;
+    return (1 - smoothstep(inner, outer, Math.hypot(rx, rz))) * smoothstep(-1, -0.3, along);
+  }
+
+  // Height a view ray has to clear over tile i: the floor, or the wall top as currently drawn.
+  surfaceH(i) {
+    if (TILE[this.dungeon.t[i]].walk) return this.scene.floorH(i);
+    const [x, y] = this.dungeon.xy(i);
+    const h = this.scene.wallH;
+    return lerp(h, Math.min(KNEE, h), this.cutAmount(x + 0.5, y + 0.5));
+  }
+  known(i) { return !this.fogOn || this.explored[i] === 1; }
 
   // Tiles light can't pass: rock and closed doors (bars and the pool let it through).
   updateWalls() {
@@ -89,7 +177,8 @@ export class Game {
 
   pathOpts() {
     const v = this.view;
-    return { secrets: v.secrets, pits: v.pits, links: v.links, keys: new Set(['odric']) };
+    // under fog, paths only cross ground the party has seen
+    return { secrets: v.secrets, pits: v.pits, links: v.links, keys: new Set(['odric']), known: this.fogOn ? this.explored : null };
   }
 
   hover(i) {
@@ -159,8 +248,12 @@ export class Game {
       const n = tk.route.length - 1, k = Math.min(tk.k, n), a = Math.floor(k), b = Math.min(n, a + 1), f = k - a;
       const [ax, ay] = d.xy(tk.route[a]), [bx, by] = d.xy(tk.route[b]);
       tk.x = lerp(ax, bx, f) + 0.5; tk.z = lerp(ay, by, f) + 0.5;
+      // close up, the camera (and so the cutaway) follows the party; the overview stays put
+      if (c.dist < CUT_MAX_DIST) c.goal = [tk.x, tk.z];
       if (tk.k >= n) { tk.tile = tk.route[n]; tk.route = null; this.refreshPreview(); this.ui.update(this); }
     }
+    if (this.eyeTile() !== this.eye) this.updateSight();
+    this.updateFog(dt);
   }
 
   frame(renderer, cssW, cssH) {
@@ -197,10 +290,14 @@ export class Game {
     }
 
     const amb = this.view.mapLight ? MAP_LIGHT : DARK;
+    const lights = this.gatherLights();
+    this.addMotes(lights[lights.length - 1]); // the torch is the last light
     renderer.render({
       viewProj: cam.vp, camPos: cam.eye, camRight: cam.right, camUp: cam.up,
       mapW: d.W, mapH: d.H, time: this.time, keyDir: KEY_DIR, keyCol: amb.key, sky: amb.sky, ground: amb.ground,
-      lights: this.gatherLights(), walls: this.walls, wallsVersion: this.wallsVersion,
+      lights, walls: this.walls, wallsVersion: this.wallsVersion,
+      fog: this.fog, fogVersion: this.fogVersion, fogOn: this.fogOn, focus: this.focus,
+      inlay: [CIRCLE_12.at[0], CIRCLE_12.at[1], CIRCLE_12.r, 0], shafts: this.shafts, motes: this.motes,
       staticSets: this.scene.sets, staticVersion: this.scene.version, staticDecals: this.staticDecals, staticDecalsVersion: this.staticDecalsVersion,
       dynSets: this.dyn, decals: this.decals, xray: this.xray,
     });

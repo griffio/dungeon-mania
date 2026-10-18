@@ -1,0 +1,45 @@
+{
+ "style": "Seamless tileable texture. Albedo colour map photographed perfectly straight on (orthographic, no perspective, no horizon), flat even diffuse lighting with no cast shadows, no highlights, no vignette. The surface fills the whole square edge to edge with no border, frame, text or watermark. Slightly stylised realism, like a finely painted tabletop miniature diorama. Details are small and evenly spread across the whole image with no single large feature, no joints, seams, block edges or plank edges, so the texture can repeat many times without an obvious pattern.",
+ "textures": [
+  {
+   "id": "stone",
+   "pick": "gemini",
+   "prompt": "Close-up of a single large face of rough hewn grey limestone, covered in fine diagonal chisel marks, small pits and chips, faint mineral staining and a little grime."
+  },
+  {
+   "id": "flag",
+   "pick": "gemini",
+   "prompt": "Close-up of the worn surface of an old grey sandstone flagstone, walked smooth in places, fine grit, small pits and hairline scratches, faint dirt and dust."
+  },
+  {
+   "id": "cave",
+   "pick": "gemini",
+   "prompt": "Damp natural cave rock floor, dark brown-grey stone with uneven lumpy texture, small loose pebbles, wet darker patches and faint pale mineral streaks."
+  },
+  {
+   "id": "oak",
+   "pick": "gemini",
+   "prompt": "Close-up of old dark oak wood grain running straight from top to bottom, open pores, fine scratches and darkened worn patches, no knots."
+  },
+  {
+   "id": "wood",
+   "pick": "gemini",
+   "prompt": "Close-up of rough weathered pale wood grain running straight from top to bottom, dry splintery surface, faint saw marks and grime."
+  },
+  {
+   "id": "iron",
+   "pick": "gemini",
+   "prompt": "Close-up of old pitted wrought iron, dark grey-black metal with fine hammer marks, small spots of orange-brown rust and a dull worn sheen."
+  },
+  {
+   "id": "greenstone",
+   "pick": "gemini",
+   "prompt": "Polished deep green serpentine stone surface with darker green mottling and faint pale veins, slightly worn and dusty."
+  },
+  {
+   "id": "marble",
+   "pick": "gemini",
+   "prompt": "Old white marble surface with faint soft grey veins, slightly yellowed and scuffed with age, fine dust."
+  }
+ ]
+}
