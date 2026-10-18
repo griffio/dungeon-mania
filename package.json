@@ -1,0 +1,10 @@
+{
+  "name": "dungeon-mania",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "serve": "npx --yes http-server -c-1 -p 8080 .",
+    "test": "node --test test/*.test.js",
+    "trace": "python3 tools/trace-map.py"
+  }
+}
