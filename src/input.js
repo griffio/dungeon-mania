@@ -118,8 +118,18 @@ export class Input {
     const g = this.getGame();
     if (!g || e.metaKey || e.ctrlKey) return;
     const cam = g.camera;
+    // number keys fire the action bar's buttons
+    if (/^[1-9]$/.test(e.key)) { const a = g.ui.actionList?.[Number(e.key) - 1]; if (a) g.act(a.id); return; }
     switch (e.key.toLowerCase()) {
-      case 'escape': g.cancel(); break;
+      case 'escape': if (g.selected) g.select(g.selected); else g.cancel(); break;
+      case 'tab': {
+        // none -> each hero in marching order -> none
+        e.preventDefault();
+        const ids = [null, ...g.order], k = ids.indexOf(g.selected);
+        const next = ids[(k + 1) % ids.length];
+        if (next) g.select(next); else if (g.selected) g.select(g.selected);
+        break;
+      }
       case 'arrowleft': case 'a': cam.pan(80, 0, this.worldPerPx()); break;
       case 'arrowright': case 'd': cam.pan(-80, 0, this.worldPerPx()); break;
       case 'arrowup': case 'w': cam.pan(0, 80, this.worldPerPx()); break;
@@ -130,8 +140,6 @@ export class Input {
       case 'h': g.toggle('lowWalls'); break;
       case 'r': g.toggle('tintRooms'); break;
       case 'l': g.toggle('labels'); break;
-      case 'p': g.toggle('pits'); break;
-      case 't': g.toggle('links'); break;
       case 'x': g.toggle('secrets'); break;
       case 'f': g.frameAll(); break;
       case 'm': g.toggle('mapLight'); break;

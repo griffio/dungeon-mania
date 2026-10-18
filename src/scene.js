@@ -20,7 +20,7 @@ const C = {
 export class SceneBuilder {
   constructor(d) {
     this.d = d;
-    this.sets = { box: new Instances(4096), cyl: new Instances(256), sph: new Instances(256) };
+    this.sets = { box: new Instances(4096), cyl: new Instances(256), sph: new Instances(256), cone: new Instances(16) };
     this.version = 0;
   }
 
@@ -33,9 +33,12 @@ export class SceneBuilder {
     return 0;
   }
 
-  build({ lowWalls = false, showSecrets = true } = {}) {
+  // view: { lowWalls, secrets (show undiscovered secret doors, a debug aid) }
+  // state: what the party has changed { casesMoved, leverFound }
+  build({ lowWalls = false, secrets: showSecrets = false } = {}, state = {}) {
+    this.state = state;
     const d = this.d, { box, cyl, sph } = this.sets;
-    box.clear(); cyl.clear(); sph.clear();
+    box.clear(); cyl.clear(); sph.clear(); this.sets.cone.clear();
     this.wallH = lowWalls ? LOW_WALL_H : WALL_H;
     this.planStairs();
     const wallH = this.wallH;
@@ -86,6 +89,14 @@ export class SceneBuilder {
       }
     }
     for (const p of d.props) this.addProp(p);
+    // the lever under room 8's bed, once found
+    const lever = [...d.doors.values()].find((x) => x.lever >= 0);
+    if (lever && state.leverFound) {
+      // set in the floor at the head of the bed, its handle showing above the mattress
+      const [lx, ly] = d.xy(lever.lever), z = ly + 0.15;
+      box.add(lx + 0.5, 0, z, 0.06, 0.62, 0.06, 0, C.iron, 8, 0, 0, state.leverPulled ? 0.5 : -0.25);
+      sph.add(lx + 0.5, 0.56, z + (state.leverPulled ? 0.3 : -0.15), 0.11, 0.11, 0.11, 0, [0.5, 0.3, 0.1], 8);
+    }
     this.version++;
   }
 
@@ -139,13 +150,14 @@ export class SceneBuilder {
   addDoor(i, showSecrets) {
     const d = this.d, door = d.doors.get(i), t = d.t[i], [x, y] = d.xy(i), { box } = this.sets;
     const cx = x + 0.5, cz = y + 0.5, H = this.wallH;
-    if (t === T.GATE) { this.addBars(i, true); return; }
-    // secret doors look like the wall around them (tinted when the viewer shows secrets)
-    if (TILE[t].secret || t === T.BLOCK) {
-      const col = t === T.BLOCK ? C.block : showSecrets ? C.secret : C.rock;
-      box.add(cx, 0, cz, 1, H, 1, 0, jitter(col, hash2(x, y)), 1, 0, 0, 0, 0, 1);
+    if (t === T.GATE) { if (!door.open) this.addBars(i, true); return; }
+    // a secret door nobody has found looks like the wall around it (tinted for the debug view)
+    if (!door.found) {
+      box.add(cx, 0, cz, 1, H, 1, 0, jitter(showSecrets ? C.secret : C.rock, hash2(x, y)), 1, 0, 0, 0, 0, 1);
       return;
     }
+    const block = t === T.BLOCK, secret = TILE[t].secret;
+    if (block && !door.open) { box.add(cx, 0, cz, 1, H, 1, 0, jitter(C.block, hash2(x, y)), 1, 0, 0, 0, 0, 1); return; }
     const yaw = { x: 0, z: Math.PI / 2, d1: Math.PI / 4, d2: -Math.PI / 4 }[door.axis];
     const span = door.axis[0] === 'd' ? Math.SQRT2 : 1;
     // a diagonal wall is only as thick as its corner-to-corner seam, so its jambs are thinner
@@ -155,7 +167,27 @@ export class SceneBuilder {
       box.add(cx + cy * o, 0, cz + sy * o, jamb, H, depth, yaw, C.rock, 1, 0, 0, 0, 0, 1);
     }
     if (H > DOOR_H) box.add(cx, DOOR_H, cz, DOOR_W, H - DOOR_H, depth, yaw, C.rock, 1, 0, 0, 0, 0, 1);
-    box.add(cx, 0, cz, DOOR_W, Math.min(DOOR_H, H), 0.12, yaw, door.rotten ? [0.1, 0.08, 0.05] : C.oak, 6, 0, 0, 0, 0, 1);
+    if (block) return; // the open block has slid into the wall
+    // the leaf: oak, or dressed stone for a secret door; rotten in room 3
+    const col = secret ? C.block : door.rotten ? [0.1, 0.08, 0.05] : C.oak, mat = secret ? 1 : 6;
+    const lh = Math.min(DOOR_H, H);
+    if (!door.open) { box.add(cx, 0, cz, DOOR_W, lh, 0.12, yaw, col, mat, 0, 0, 0, 0, 1); return; }
+    // open: swung 90 degrees on its hinge into the room it opens into (the higher-numbered one)
+    const nx = -sy, nz = cy, side = this.swingSide(i, nx, nz);
+    const hx = cx - cy * (DOOR_W / 2 - 0.05), hz = cz - sy * (DOOR_W / 2 - 0.05);
+    box.add(hx + nx * side * DOOR_W / 2, 0, hz + nz * side * DOOR_W / 2, DOOR_W, lh, 0.12, yaw + Math.PI / 2, col, mat, 0, 0, 0, 0, 1);
+  }
+
+  // Which way a door at tile i swings, along its normal (nx, nz): +1 or -1, toward the side whose
+  // room is numbered higher (passages count lowest), as the book's doors do.
+  swingSide(i, nx, nz) {
+    const d = this.d, [x, y] = d.xy(i);
+    const rank = (s) => {
+      const tx = x + Math.round(nx * s), ty = y + Math.round(nz * s);
+      const r = d.inside(tx, ty) ? d.roomOf(d.idx(tx, ty)) : null;
+      return r && !r.passage ? parseInt(r.id, 10) || 0 : -1;
+    };
+    return rank(1) >= rank(-1) ? 1 : -1;
   }
 
   // Bars run along the bar line through the tile (both ways where lines cross); gates are
@@ -178,7 +210,9 @@ export class SceneBuilder {
   }
 
   addProp(p) {
-    const { box, cyl, sph } = this.sets, [x, z] = p.at, yaw = ((p.rot || 0) * Math.PI) / 180;
+    const { box, cyl, sph } = this.sets, yaw = ((p.rot || 0) * Math.PI) / 180;
+    // room 5's packing cases, once dragged away from the north wall
+    const [x, z] = p.kind === 'cases' && this.state.casesMoved ? [p.at[0] + 1.6, p.at[1] + 1.4] : p.at;
     const B = (col, mat = 7, emis = 0) => box.add(x, 0, z, p.w, p.h, p.d, yaw, col, mat, emis);
     switch (p.kind) {
       case 'coffins': for (let k = 0; k < 3; k++) box.add(x, k * p.h / 3, z, p.w, p.h / 3 - 0.02, p.d, yaw, jitter(C.wood, k * 0.3), 7); break;

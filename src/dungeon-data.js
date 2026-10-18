@@ -90,11 +90,13 @@ export const ROOMS = [
 
 // Doors that aren't plain oak. Doors open into rooms; between two rooms, into the
 // higher-numbered one (the book's rule, handled by the game).
-//   key: needs that key, or Open Locks, or smashing (doors) / Odric's keys (gates)
+//   key: needs that key, or Open Locks, or smashing (doors) / Odric's keys (gates).
+//     'lever' means no key opens it: only the lever at `lever` does.
 //   opensFrom: the side the door can be opened from (the one-way block)
+//   behind: something to move before a search can find it ('cases': room 5's packing cases)
 export const DOORS = [
-  { at: [9, 2], note: 'Opened by the lever under the bed in 8', lever: [10, 5] },
-  { at: [29, 3], note: 'Sliding panel behind the packing cases' },
+  { at: [9, 2], key: 'lever', lever: [10, 5], note: 'Opened by the lever under the bed in 8' },
+  { at: [29, 3], behind: 'cases', note: 'Sliding panel behind the packing cases' },
   { at: [2, 12], key: 'odric', note: 'Locked; Odric has the key' },
   { at: [5, 7], key: 'odric', note: 'Cell, locked' },
   { at: [7, 7], key: 'odric', note: 'Cell, locked' },
@@ -110,8 +112,9 @@ export const LINKS = [
   { id: 'entrance', from: [50, 14], to: 'surface', kind: 'tunnel', note: 'The 40 ft tunnel up to the hole in the temple floor' },
 ];
 
-// Where the party arrives from the tunnel.
+// Where the party arrives from the tunnel, and its line as it sets off west: front to back.
 export const START = [49, 14];
+export const PARTY_START = [[46, 14], [47, 14], [48, 14], [49, 14]];
 
 // Furniture and fittings, in tile units (centres may fall between tiles). w, d: footprint;
 // h: height; rot: turn in degrees. M0 draws them as grey boxes.

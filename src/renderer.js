@@ -483,6 +483,17 @@ function cylMesh(seg = 14, caps = true) {
   }
   return new Float32Array(v);
 }
+// Cone: base radius 0.5 at y = 0, apex at y = 1, with a base cap.
+function coneMesh(seg = 14) {
+  const v = [], k = 0.5 / Math.hypot(0.5, 1); // the slope's normal tilts up by atan(0.5)
+  for (let s = 0; s < seg; s++) {
+    const a0 = (s / seg) * Math.PI * 2, a1 = ((s + 1) / seg) * Math.PI * 2, am = (a0 + a1) / 2;
+    const n = (a) => [Math.cos(a) * (1 / Math.hypot(0.5, 1)), k, Math.sin(a) * (1 / Math.hypot(0.5, 1))];
+    v.push(Math.cos(a0) * 0.5, 0, Math.sin(a0) * 0.5, ...n(a0), Math.cos(a1) * 0.5, 0, Math.sin(a1) * 0.5, ...n(a1), 0, 1, 0, ...n(am));
+    v.push(0, 0, 0, 0, -1, 0, Math.cos(a0) * 0.5, 0, Math.sin(a0) * 0.5, 0, -1, 0, Math.cos(a1) * 0.5, 0, Math.sin(a1) * 0.5, 0, -1, 0);
+  }
+  return new Float32Array(v);
+}
 function sphereMesh(seg = 12, rings = 8) {
   const v = [];
   const pt = (r, s) => {
@@ -523,7 +534,7 @@ export class FlatList {
     for (let k = 0; k < s; k++) f[o + k] = arguments[k];
   }
 }
-export const MESHES = ['box', 'cyl', 'sph'];
+export const MESHES = ['box', 'cyl', 'sph', 'cone'];
 
 export class Renderer {
   async init(canvas) {
@@ -541,7 +552,7 @@ export class Renderer {
     mod.getCompilationInfo?.().then((info) => { for (const m of info.messages) if (m.type === 'error') console.error('WGSL', m.lineNum, m.message); });
 
     this.meshes = {};
-    for (const [name, data] of [['box', boxMesh()], ['cyl', cylMesh()], ['sph', sphereMesh()], ['tube', cylMesh(20, false)]]) {
+    for (const [name, data] of [['box', boxMesh()], ['cyl', cylMesh()], ['sph', sphereMesh()], ['cone', coneMesh()], ['tube', cylMesh(20, false)]]) {
       const buf = device.createBuffer({ size: data.byteLength, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST });
       device.queue.writeBuffer(buf, 0, data);
       this.meshes[name] = { buf, count: data.length / 6 };

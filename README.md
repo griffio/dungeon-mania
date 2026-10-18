@@ -2,7 +2,7 @@
 
 A turn-based Dungeons & Dragons dungeon crawl in WebGPU, for desktop Chrome and iPad. It recreates the dungeon designed in *What Is Dungeons & Dragons?* (Penguin, 1982). The full design is in [PLAN.md](PLAN.md).
 
-**Status: M0 done, M1 under way.** The Dungeons of Kollchap are traced from the book's map, curated onto a 5 ft grid and shown as grey boxes. The dungeon is dark: the party's torch, the fires, the healing pool and the daylight are the only light, and the walls cast crisp shadows. Under fog of war you see only what is lit and in view; places you have seen stay as a dim memory. Walls between the camera and the party drop to knee height, so the party is never hidden. The stone, wood and iron are laid out procedurally in the shader with generated detail textures on top, and there are shafts of daylight and dust in the torchlight. You can orbit the dungeon and preview paths. There's no combat yet.
+**Status: M0–M2 done (M1's iPad pass still to do).** The Dungeons of Kollchap are traced from the book's map and curated onto a 5 ft grid. The party of four explores it: walking in marching order, opening stiff doors, picking or smashing locks, searching for secret doors and keeping their torches lit while the dungeon clock runs. The dungeon is dark: the party's torch, the fires, the healing pool and the daylight are the only light, and the walls cast crisp shadows. Under fog of war you see only what is lit and in view; places you have seen stay as a dim memory. Walls between the camera and the party drop to knee height, so the party is never hidden. The stone, wood and iron are laid out procedurally in the shader with generated detail textures on top, and there are shafts of daylight and dust in the torchlight. There's no combat yet.
 
 ## Run it
 
@@ -13,18 +13,18 @@ npm test             # map validation and movement rules (node:test, no dependen
 
 WebGPU needs a secure page: `localhost` or HTTPS. There is no build step. The game is plain ES modules loaded straight from `src/`.
 
-## Map viewer controls
+## Playing
 
 | | iPad | Desktop |
 |---|---|---|
-| Preview a path | Tap a tile | Hover a tile |
-| Walk there | Tap it again | Click it again |
-| Pan | Drag | Drag, WASD or arrow keys |
-| Zoom | Pinch | Mouse wheel |
-| Rotate | Twist two fingers, or ↺ ↻ | Q / E (N faces north) |
-| Whole map / the party | ⤢ / ◉ | F |
+| Walk | Tap a tile to preview, tap again to go | Hover to preview, click to go |
+| Move one hero alone | Tap their card or figure | Tab cycles, Esc clears |
+| Actions (search, doors, locks, light) | Buttons along the bottom | Number keys 1–9 |
+| Marching order | Tap two names to swap them | Same |
+| Pan / zoom / rotate | Drag / pinch / twist | Drag or WASD / wheel / Q, E |
+| Look somewhere | Tap the automap | Click the automap |
 
-The toggles switch on low walls (H), a tint per room (R), room labels (L), paths through secret doors (X, shown purple), climbing through pits (P), the tunnel between rooms 9 and 18 (T), and a map light that lifts the fog and shows the whole dungeon (M).
+The party follows in marching order: single file in passages, closing into a 2×2 block in rooms. Walking stops at a closed door and tries to open it. Every 120 ft is a 10-minute turn, and a torch lasts 6. Torch flames lean toward undiscovered secret doors. 👁 holds viewing aids: low walls, room tint, labels, a map light that lifts the fog, and showing secret doors.
 
 ## The map
 

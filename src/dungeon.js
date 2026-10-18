@@ -120,10 +120,12 @@ export class Dungeon {
   //   secrets: undiscovered secret doors count as found     keys: Set of key ids held
   //   pits: walk through pits (climbing down and up)        closed: closed doors are passable (they get opened)
   //   ignore: Set of door tiles treated as walls          known: only tiles with known[i] set (explored)
+  //   through: Set of door tiles passable whatever their state (planning a walk up to a locked door)
   enter(a, b, opts) {
     const d = this.tile(b);
     if (!d.walk) return false;
     if (opts.known && !opts.known[b]) return false;
+    if (opts.through?.has(b)) return true;
     if (d.hazard && !opts.pits) return false;
     if (d.door) {
       const door = this.doors.get(b);

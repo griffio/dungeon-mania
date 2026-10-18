@@ -23,8 +23,6 @@ async function boot() {
   game = new Game({ ui });
   window.game = game; // handy for debugging from the console
   ui.attach(game);
-  game.camera.aspect = canvas.clientWidth / canvas.clientHeight;
-  game.frameAll();
   new Input(canvas, () => game);
   $('#loading').classList.remove('show');
   $('#hud').classList.add('show');

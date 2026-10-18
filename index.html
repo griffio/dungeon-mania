@@ -51,32 +51,62 @@ button { font-family: var(--head); color: var(--parch); cursor: pointer; touch-a
 #hud { position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity 0.6s; }
 #hud.show { opacity: 1; }
 .panel { background: var(--bg); border: 1px solid var(--line); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); border-radius: 6px; pointer-events: auto; }
-#title { position: absolute; top: calc(10px + var(--sa-t)); left: calc(12px + var(--sa-l)); padding: 8px 14px; max-width: calc(100vw - 230px); }
-#title h1 { margin: 0; font-family: var(--head); font-size: 20px; letter-spacing: 0.08em; color: var(--brass); font-weight: 700; }
-#title div { font-size: 14px; color: var(--dim); font-style: italic; }
+.c-brannoc { --c: #c0503c; } .c-ysolde { --c: #5b7fd6; } .c-aldwin { --c: #e6dcc4; } .c-fennick { --c: #6f9a55; }
+#clock { position: absolute; top: calc(10px + var(--sa-t)); left: calc(12px + var(--sa-l)); width: 200px; padding: 6px 12px; }
+#clock .turn { font-family: var(--head); font-size: 19px; color: var(--brass); letter-spacing: 0.06em; }
+#clock .turn span { font-family: var(--text); font-size: 15px; color: var(--dim); margin-left: 6px; }
+#clock .where { font-size: 15px; font-style: italic; color: var(--parch); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#leftcol { position: absolute; top: calc(76px + var(--sa-t)); left: calc(12px + var(--sa-l)); width: 200px; display: flex; flex-direction: column; gap: 6px; }
+#cards { display: flex; flex-direction: column; gap: 6px; pointer-events: auto; }
+.card { position: relative; text-align: left; padding: 6px 10px 6px 14px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; font-family: var(--text); line-height: 1.15; }
+.card::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--c); border-radius: 6px 0 0 6px; }
+.card.sel { border-color: var(--c); box-shadow: 0 0 0 1px var(--c), 0 0 16px -4px var(--c); }
+.card .nm { display: flex; justify-content: space-between; font-family: var(--head); font-size: 16px; color: var(--parch); }
+.card .nm i { font-style: normal; font-family: var(--mono); font-size: 12px; color: var(--dim); border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; }
+.card .rl { font-size: 13px; color: var(--dim); font-style: italic; }
+.card .hp, .card .burn { height: 5px; background: rgba(255,255,255,0.08); border-radius: 2px; margin-top: 3px; overflow: hidden; }
+.card .hp b { display: block; height: 100%; background: #8f3b2c; }
+.card .burn b { display: block; height: 100%; background: linear-gradient(90deg, #a24a14, #f0a53a); }
+.card .hpt, .card .kit { font-size: 12px; color: var(--dim); margin-top: 1px; }
+.card .lt { font-size: 13px; color: #f0c27a; margin-top: 3px; }
+.card .lt .dark { color: var(--dim); font-style: italic; }
+.card .kit em { color: var(--bad); }
+#order { padding: 6px 8px 8px; }
+#order .ttl { font-family: var(--head); font-size: 12px; letter-spacing: 0.08em; color: var(--dim); margin-bottom: 4px; }
+#order .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+#order .slot { position: relative; min-height: 34px; background: var(--bg2); border: 1px solid var(--line); border-left: 4px solid var(--c); border-radius: 4px; font-size: 12px; padding: 2px 4px 2px 18px; text-align: left; }
+#order .slot i { position: absolute; left: 5px; top: 50%; transform: translateY(-50%); font-style: normal; font-family: var(--mono); color: var(--dim); font-size: 11px; }
+#order .slot.pick { border-color: var(--brass); box-shadow: 0 0 0 1px var(--brass) inset; }
 #camctl { position: absolute; top: calc(10px + var(--sa-t)); right: calc(12px + var(--sa-r)); padding: 6px; display: flex; gap: 6px; }
 .icon-btn { width: 44px; height: 44px; border-radius: 6px; background: var(--bg2); border: 1px solid var(--line); font-size: 20px; display: grid; place-items: center; padding: 0; }
 .icon-btn:active { transform: scale(0.95); }
-#info { position: absolute; left: calc(12px + var(--sa-l)); bottom: calc(12px + var(--sa-b)); width: min(440px, calc(100vw - 24px)); padding: 10px 14px; font-size: 17px; line-height: 1.35; }
-#info .xy { font-family: var(--mono); font-size: 13px; color: var(--dim); margin-right: 4px; }
+#mapwrap { position: absolute; top: calc(70px + var(--sa-t)); right: calc(12px + var(--sa-r)); padding: 5px; line-height: 0; }
+#automap { display: block; border-radius: 3px; cursor: pointer; touch-action: none; }
+#info { position: absolute; left: calc(12px + var(--sa-l)); bottom: calc(12px + var(--sa-b)); width: min(460px, calc(100vw - 24px)); padding: 8px 12px; font-size: 16px; line-height: 1.3; }
+#info .xy { font-family: var(--mono); font-size: 12px; color: var(--dim); margin-right: 4px; }
 #info b { color: var(--parch); font-weight: 600; }
-#info .note { font-size: 15px; color: var(--dim); font-style: italic; }
-#info .path { color: var(--brass); margin-top: 3px; }
+#info .path { color: var(--brass); margin-top: 2px; }
 #info .path.none { color: var(--bad); }
 #info .hint { color: var(--dim); font-style: italic; }
-#info .party { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); font-size: 15px; color: var(--dim); }
-#toggles { position: absolute; right: calc(12px + var(--sa-r)); bottom: calc(12px + var(--sa-b)); padding: 6px; display: grid; grid-template-columns: repeat(3, auto); gap: 6px; }
-#toggles button { min-width: 96px; min-height: 44px; padding: 4px 8px; background: var(--bg2); border: 1px solid var(--line); border-radius: 6px; font-size: 12px; letter-spacing: 0.06em; color: var(--dim); }
+#info .log { margin-top: 6px; padding-top: 5px; border-top: 1px solid var(--line); font-size: 14px; color: var(--dim); }
+#info .log div:last-child { color: var(--parch); }
+#actions { position: absolute; left: calc(484px + var(--sa-l)); right: calc(12px + var(--sa-r)); bottom: calc(12px + var(--sa-b)); display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-start; pointer-events: none; }
+#actions button { pointer-events: auto; position: relative; width: 92px; min-height: 72px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 6px 4px; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+#actions button .ic { font-size: 22px; line-height: 1; }
+#actions button .lb { font-size: 11px; margin-top: 5px; letter-spacing: 0.03em; text-align: center; line-height: 1.1; }
+#actions button .ct { position: absolute; top: 3px; right: 5px; font-family: var(--mono); font-size: 10px; color: var(--dim); }
+#actions button.dis { opacity: 0.38; }
+#actions button:active { transform: scale(0.95); }
+#toggles { position: absolute; right: calc(12px + var(--sa-r)); top: calc(260px + var(--sa-t)); padding: 6px; display: none; grid-template-columns: repeat(2, auto); gap: 6px; }
+#toggles.show { display: grid; }
+#toggles button { min-width: 110px; min-height: 40px; padding: 4px 8px; background: var(--bg2); border: 1px solid var(--line); border-radius: 6px; font-size: 12px; letter-spacing: 0.06em; color: var(--dim); }
 #toggles button.on { color: var(--parch); border-color: var(--brass); box-shadow: 0 0 0 1px var(--brass) inset; }
 #toggles button kbd { font-family: var(--mono); font-size: 10px; color: var(--dim); margin-left: 4px; }
-@media (max-width: 900px) {
-  #toggles { left: calc(12px + var(--sa-l)); right: auto; bottom: calc(132px + var(--sa-b)); }
-  #info { width: calc(100vw - 24px); min-height: 110px; }
+@media (max-width: 1100px) {
+  #actions { left: calc(12px + var(--sa-l)); bottom: calc(150px + var(--sa-b)); justify-content: center; }
 }
-@media (max-width: 600px) {
-  #toggles { grid-template-columns: repeat(2, auto); }
-  #toggles button { min-width: 80px; }
-  #title { max-width: calc(100vw - 24px); top: calc(64px + var(--sa-t)); }
+@media (max-height: 820px) {
+  .card .hpt, .card .kit { display: none; }
 }
 
 /* full-screen panels */
@@ -99,39 +129,41 @@ button { font-family: var(--head); color: var(--parch); cursor: pointer; touch-a
 <div id="labels"></div>
 
 <div id="hud">
-  <div id="title" class="panel"><h1>The Dungeons of Kollchap</h1><div>Map viewer: torchlight, shadows, fog of war and materials (M1 in progress)</div></div>
+  <div id="clock" class="panel"></div>
+  <div id="leftcol"><div id="cards"></div><div id="order" class="panel"></div></div>
   <div id="camctl" class="panel">
     <button id="rotl" class="icon-btn" aria-label="Rotate view left">↺</button>
     <button id="north" class="icon-btn" aria-label="Face north">N</button>
     <button id="rotr" class="icon-btn" aria-label="Rotate view right">↻</button>
     <button id="frame" class="icon-btn" aria-label="Show the whole dungeon">⤢</button>
     <button id="party" class="icon-btn" aria-label="Go to the party">◉</button>
-    <button id="help" class="icon-btn" aria-label="Controls">?</button>
+    <button id="viewbtn" class="icon-btn" aria-label="View options">👁</button>
+    <button id="help" class="icon-btn" aria-label="How to play">?</button>
   </div>
-  <div id="info" class="panel"></div>
+  <div id="mapwrap" class="panel"><canvas id="automap"></canvas></div>
   <div id="toggles" class="panel">
     <button data-view="lowWalls">Low walls<kbd>H</kbd></button>
     <button data-view="tintRooms">Room tint<kbd>R</kbd></button>
     <button data-view="labels">Labels<kbd>L</kbd></button>
-    <button data-view="secrets">Secret doors<kbd>X</kbd></button>
-    <button data-view="pits">Through pits<kbd>P</kbd></button>
-    <button data-view="links">9–18 tunnel<kbd>T</kbd></button>
     <button data-view="mapLight">Map light<kbd>M</kbd></button>
+    <button data-view="secrets">Show secrets<kbd>X</kbd></button>
   </div>
+  <div id="info" class="panel"></div>
+  <div id="actions"></div>
 </div>
 
 <div id="howto" class="screen"><div class="howbox">
-  <h2>Map viewer controls</h2>
+  <h2>Exploring Kollchap</h2>
   <table>
-    <tr><td>Path preview</td><td>Hover a tile (mouse) or tap it (iPad). The gold dots are the route from the party; the panel shows its length and the exploring time it costs.</td></tr>
-    <tr><td>Walk</td><td>Click or tap the same tile again.</td></tr>
-    <tr><td>Pan</td><td>Drag, or <kbd>WASD</kbd> / arrow keys</td></tr>
-    <tr><td>Zoom</td><td>Pinch, or the mouse wheel</td></tr>
-    <tr><td>Rotate</td><td>Twist two fingers, <kbd>Q</kbd> / <kbd>E</kbd>, or ↺ ↻. <kbd>N</kbd> faces north again.</td></tr>
-    <tr><td>Whole map</td><td>⤢ or <kbd>F</kbd>. ◉ goes to the party.</td></tr>
-    <tr><td>Cancel</td><td>Right-click or <kbd>Esc</kbd></td></tr>
-    <tr><td>Light</td><td>The party carries a torch; the only other light comes from fires, the pool and daylight. You see what is lit and in view, and anything right beside you. Places you have seen stay as a dim memory; paths only cross explored ground. <kbd>M</kbd> turns on a map light and lifts the fog to see everything.</td></tr>
-    <tr><td>Toggles</td><td>Low walls <kbd>H</kbd>, room tint <kbd>R</kbd>, labels <kbd>L</kbd>. Paths may use secret doors <kbd>X</kbd> (tinted purple), climb through pits <kbd>P</kbd>, and take the tunnel from room 9 to 18 <kbd>T</kbd>.</td></tr>
+    <tr><td>Walk</td><td>Tap a tile to see the way there (hover, with a mouse), and tap it again to go. The party follows in marching order: single file in passages, closing up in rooms. Walking stops at a closed door and tries to open it.</td></tr>
+    <tr><td>Alone</td><td>Tap a hero's card, or the hero, to move them alone. Tap again to rejoin. <kbd>Tab</kbd> cycles, <kbd>Esc</kbd> clears.</td></tr>
+    <tr><td>Doors</td><td>Every door is stiff: it opens on 1–2 in 6, 1–3 for the strong. Locked doors can be picked by Fennick or smashed, loudly.</td></tr>
+    <tr><td>Secrets</td><td>Search makes everyone check the walls around them for a turn. Watch the torch flames: they lean toward a hidden door, and dust drifts that way.</td></tr>
+    <tr><td>Time</td><td>Every 120 ft walked is a 10-minute turn. A torch lasts 6 turns; light another before the dark comes. Ysolde's lantern can be hooded to hide the party.</td></tr>
+    <tr><td>Order</td><td>Tap two names in the marching order to swap them. Number <kbd>1</kbd> leads.</td></tr>
+    <tr><td>Actions</td><td>The buttons along the bottom, or number keys <kbd>1</kbd>–<kbd>9</kbd>.</td></tr>
+    <tr><td>Camera</td><td>Drag to pan, pinch or wheel to zoom, twist or <kbd>Q</kbd>/<kbd>E</kbd> to turn. Tap the map to look there. ◉ finds the party, ⤢ shows it all.</td></tr>
+    <tr><td>View</td><td>👁 for low walls <kbd>H</kbd>, room tint <kbd>R</kbd>, labels <kbd>L</kbd>, map light <kbd>M</kbd> (lifts the fog) and show secrets <kbd>X</kbd>: viewing aids, not part of play.</td></tr>
   </table>
   <p>Tap anywhere to close.</p>
 </div></div>
