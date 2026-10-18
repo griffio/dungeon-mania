@@ -113,3 +113,35 @@ export function rangeMod(dist, [s, m, l]) {
   if (dist <= l) return -1;
   return null;
 }
+
+// ---------- magic (PLAN.md 4) ----------
+
+// Turn Undead, B/X, for clerics of level 1-3: the 2d6 roll needed, 'T' turned automatically,
+// or null (can't be turned at this level).
+export const TURN_TABLE = {
+  1: { skeleton: 7, zombie: 9, ghoul: 11 },
+  2: { skeleton: 'T', zombie: 7, ghoul: 9 },
+  3: { skeleton: 'T', zombie: 'T', ghoul: 7 },
+};
+export function turnUndead(rng, level, kind) {
+  const need = TURN_TABLE[level]?.[kind];
+  if (need === undefined || need === null) return { ok: false, need: null, text: 'cannot be turned' };
+  if (need === 'T') return { ok: true, need: 'T', roll: 0, text: 'turned' };
+  const r = roll(rng, '2d6');
+  return { ok: r >= need, need, roll: r, text: `2d6 ${r}, needed ${need}` };
+}
+
+// Sleep: 2d8 hit dice of creatures fall asleep, the smallest first; none above 4+1 HD, and a
+// creature only sleeps if the dice left cover all of it (B/X). hds: each creature's hit dice.
+// Returns the indexes of those asleep, and the dice rolled.
+export function sleepTargets(rng, hds) {
+  let left = roll(rng, '2d8');
+  const total = left, order = hds.map((hd, k) => ({ hd, k })).filter((c) => c.hd <= 4.1).sort((a, b) => a.hd - b.hd);
+  const asleep = [];
+  for (const c of order) {
+    const cost = Math.max(1, Math.ceil(c.hd));
+    if (cost > left) break;
+    left -= cost; asleep.push(c.k);
+  }
+  return { asleep, roll: total };
+}

@@ -201,6 +201,20 @@ export const FOES = [
   { kind: 'rat', at: [34, 12], hp: 1, group: 'rats', state: 'hidden' },
   { kind: 'rat', at: [32, 12], hp: 3, group: 'rats', state: 'hidden' },
   { kind: 'rat', at: [34, 11], hp: 2, group: 'rats', state: 'hidden' },
+  // corridor 4: green slime clinging to the west wall, waiting for someone to pass beneath
+  { kind: 'slime', at: [27, 10], hp: 4, group: 'slime', state: 'lurking' },
+  // room 5a: Belisarius, starving and frightened, behind the panel
+  { kind: 'belisarius', at: [29, 2], hp: 2, group: 'belisarius', state: 'cowering' },
+  // room 19: four goblins on their straw; broken, they run the loop through 18
+  { kind: 'goblin', at: [23, 23], hp: 4, group: 'goblins', state: 'resting' },
+  { kind: 'goblin', at: [24, 24], hp: 3, group: 'goblins', state: 'resting' },
+  { kind: 'goblin', at: [23, 25], hp: 6, group: 'goblins', state: 'resting' },
+  { kind: 'goblin', at: [24, 22], hp: 4, group: 'goblins', state: 'resting' },
+];
+
+// Traps (PLAN.md 3.6). A hidden pit looks like floor until it's found or fallen into.
+export const TRAPS = [
+  { id: 'pit18', at: [29, 23], kind: 'pit', hidden: true, note: 'Covered pit: the bottom of the tunnel from room 9' },
 ];
 
 // Room 12's floor markings: a huge green circle, white in the corners.

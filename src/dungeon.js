@@ -130,13 +130,14 @@ export class Dungeon {
   //   ignore: Set of door tiles treated as walls          known: only tiles with known[i] set (explored)
   //   through: Set of door tiles passable whatever their state (planning a walk up to a locked door)
   //   blocked: tiles with blocked[i] set can't be entered (someone is standing there)
+  //   floorPits: Set of pit tiles walked like floor (a covered pit nobody knows of, a bridged one)
   enter(a, b, opts) {
     const d = this.tile(b);
     if (!d.walk) return false;
     if (opts.known && !opts.known[b]) return false;
     if (opts.through?.has(b)) return true;
     if (opts.blocked?.[b]) return false;
-    if (d.hazard && !opts.pits) return false;
+    if (d.hazard && !opts.pits && !opts.floorPits?.has(b)) return false;
     if (d.door) {
       const door = this.doors.get(b);
       if (opts.ignore?.has(b)) return false;
@@ -155,7 +156,7 @@ export class Dungeon {
   step(a, b, opts) {
     if (!this.enter(a, b, opts)) return Infinity;
     const W = this.W, tb = this.tile(b);
-    let c = tb.cost;
+    let c = opts.floorPits?.has(b) ? 1 : tb.cost;
     if (tb.door && !this.doors.get(b).open) c += 1; // opening it
     const ax = a % W, bx = b % W, ay = (a - ax) / W, by = (b - bx) / W;
     if (ax !== bx && ay !== by) {

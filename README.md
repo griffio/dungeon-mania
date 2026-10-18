@@ -2,7 +2,7 @@
 
 A turn-based Dungeons & Dragons dungeon crawl in WebGPU, for desktop Chrome and iPad. It recreates the dungeon designed in *What Is Dungeons & Dragons?* (Penguin, 1982). The full design is in [PLAN.md](PLAN.md).
 
-**Status: M0–M3 done (M1's iPad pass still to do).** The game starts at sunset in the ruined temple above Kollchap, where two hobgoblins watch the hole down. Climb down (or fight first), get past the bats, and explore the dungeon in marching order: stiff doors, picked or smashed locks, secret doors, burning torches and the dungeon clock. Meet the orcs and the giant rats in turn-based B/X combat: surprise, group initiative, move and act, an attack panel that lists every modifier and the odds, dice rolled out on the table, morale, and bleeding heroes to bandage. The dungeon is lit only by torches, fires, the healing pool and daylight, with crisp wall shadows and fog of war.
+**Status: M0–M4 done (M1's iPad pass still to do).** The game starts at sunset in the ruined temple above Kollchap, where two hobgoblins watch the hole down. Climb down (or fight first), get past the bats, and explore the dungeon in marching order: stiff doors, picked or smashed locks, secret doors, burning torches and the dungeon clock. Meet the orcs and the giant rats in turn-based B/X combat: surprise, group initiative, move and act, an attack panel that lists every modifier and the odds, dice rolled out on the table, morale, and bleeding heroes to bandage. Ysolde and Aldwin cast their memorised spells (Sleep, Magic Missile, Cure Light Wounds and the rest) and get them back by making camp; Fennick hides in shadows, backstabs, listens at doors and finds traps; Brannoc holds the line. Watch for the green slime in the corridor, the covered pit in 18 and the goblins who know a way round it. The dungeon is lit only by torches, fires, the healing pool and daylight, with crisp wall shadows and fog of war.
 
 ## Run it
 
@@ -19,7 +19,8 @@ WebGPU needs a secure page: `localhost` or HTTPS. There is no build step. The ga
 |---|---|---|
 | Walk | Tap a tile to preview, tap again to go | Hover to preview, click to go |
 | Move one hero alone | Tap their card or figure | Tab cycles, Esc clears |
-| Actions (search, doors, locks, light, climb) | Buttons along the bottom | Number keys 1–9 |
+| Actions (search, doors, locks, light, climb, spells, skills, potions, rest) | Buttons along the bottom | Number keys 1–9 |
+| Cast a spell | Its button, then tap the target | Same; Esc cancels |
 | Fight | Tap a blue tile to move, a foe to attack, then **Attack** | Same; Enter attacks, Space ends the round |
 | Marching order | Tap two names to swap them | Same |
 | Pan / zoom / rotate | Drag / pinch / twist | Drag or WASD / wheel / Q, E |

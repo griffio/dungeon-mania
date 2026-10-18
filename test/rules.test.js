@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { die, roll, mod, inSix, percent, doorChance, searchChance, minutesFor, clockText, hitBase, attackRoll, hitChance, damage, moraleCheck, initiative, save, rangeMod } from '../src/rules.js';
+import { die, roll, mod, inSix, percent, doorChance, searchChance, minutesFor, clockText, hitBase, attackRoll, hitChance, damage, moraleCheck, initiative, save, rangeMod, turnUndead, sleepTargets } from '../src/rules.js';
 import { makeRng } from '../src/util.js';
 
 test('dice stay in range and cover every face', () => {
@@ -77,4 +77,21 @@ test('saving throws by class', () => {
 
 test('missile range bands', () => {
   assert.deepEqual([3, 8, 12, 20, 40].map((d) => rangeMod(d, [8, 16, 32])), [1, 1, 0, -1, null]);
+});
+
+test('Turn Undead follows the B/X table for levels 1-3', () => {
+  assert.equal(turnUndead(() => 0, 2, 'skeleton').ok, true, 'skeletons are turned at level 2');
+  assert.equal(turnUndead(() => 0, 2, 'zombie').ok, false, '2d6 of 2 is under 7');
+  assert.equal(turnUndead(() => 0.999, 2, 'zombie').ok, true, '12 beats 7');
+  assert.equal(turnUndead(() => 0.999, 1, 'ghoul').need, 11);
+  assert.equal(turnUndead(() => 0.999, 2, 'dragon').ok, false);
+});
+
+test('Sleep spends 2d8 hit dice on the smallest creatures first', () => {
+  // 2d8 of 16: four 1 HD goblins and a 4+1 HD ogre (4.1 -> 5 dice): 4 + 5 = 9 fits
+  assert.deepEqual(sleepTargets(() => 0.999, [1, 1, 4.1, 1, 1]).asleep.sort(), [0, 1, 2, 3, 4]);
+  // 2d8 of 2: just two small ones
+  assert.deepEqual(sleepTargets(() => 0, [1, 2, 1, 1]).asleep, [0, 2]);
+  // nothing above 4+1 HD
+  assert.deepEqual(sleepTargets(() => 0.999, [6]).asleep, []);
 });

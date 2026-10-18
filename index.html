@@ -68,6 +68,13 @@ button { font-family: var(--head); color: var(--parch); cursor: pointer; touch-a
 .card .hp b { display: block; height: 100%; background: #8f3b2c; }
 .card .burn b { display: block; height: 100%; background: linear-gradient(90deg, #a24a14, #f0a53a); }
 .card .hpt, .card .kit { font-size: 12px; color: var(--dim); margin-top: 1px; }
+.card .chips { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 3px; }
+.card .chips b { font: 11px var(--mono); font-weight: normal; padding: 0 4px; border-radius: 3px; border: 1px solid; }
+.chips .slime { color: #9be36b; border-color: #4f8a2a; background: rgba(60,120,20,0.25); animation: pulse 1s ease-in-out infinite alternate; }
+.chips .hid { color: #a9a9c0; border-color: #555569; } .chips .mag { color: #9cbcff; border-color: #44609a; } .chips .gold { color: #f0cf7a; border-color: #8a6d2a; }
+@keyframes pulse { from { opacity: 0.6; } to { opacity: 1; } }
+#castprompt { position: fixed; left: 50%; top: 112px; transform: translateX(-50%); padding: 6px 14px; background: rgba(20,16,40,0.9); border: 1px solid #6a64c0; border-radius: 6px; color: #d8d4ff; font-family: var(--text); font-size: 15px; display: none; pointer-events: none; z-index: 6; }
+#castprompt.show { display: block; } #castprompt span { color: var(--dim); font-size: 12px; margin-left: 8px; }
 .card .lt { font-size: 13px; color: #f0c27a; margin-top: 3px; }
 .card .lt .dark { color: var(--dim); font-style: italic; }
 .card .kit em { color: var(--bad); }
@@ -134,7 +141,8 @@ button { font-family: var(--head); color: var(--parch); cursor: pointer; touch-a
 .float { position: absolute; left: 0; top: 0; font-family: var(--head); font-weight: 700; font-size: 22px; text-shadow: 0 2px 5px #000, 0 0 2px #000; white-space: nowrap; will-change: transform, opacity; }
 .float.die { color: #f4ead2; font-size: 30px; text-shadow: 0 0 10px rgba(0,0,0,0.9), 0 2px 4px #000; }
 .float.die.d6 { font-size: 24px; color: #f0c27a; }
-.float.dmg { color: #ff9a5a; } .float.miss { color: #b5a990; font-size: 17px; } .float.kill { color: #ff4d3d; font-size: 18px; }
+.float.dmg { color: #ff9a5a; }
+.float.heal { color: #8fe08a; font-size: 22px; } .float.zz { color: #c9d4ff; font-size: 16px; font-style: italic; } .float.miss { color: #b5a990; font-size: 17px; } .float.kill { color: #ff4d3d; font-size: 18px; }
 #banner { position: fixed; top: 22%; left: 50%; transform: translateX(-50%); font-family: var(--head); font-size: 34px; color: var(--parch); letter-spacing: 0.1em;
   text-shadow: 0 3px 12px #000, 0 0 3px #000; pointer-events: none; opacity: 0; white-space: nowrap; }
 #banner.show { animation: bannerin 2.6s ease-out forwards; }
@@ -187,7 +195,8 @@ button { font-family: var(--head); color: var(--parch); cursor: pointer; touch-a
   </div>
   <div id="info" class="panel"></div>
   <div id="actions"></div>
-  <div id="roundbar" class="panel"></div>
+  <div id="castprompt"></div>
+<div id="roundbar" class="panel"></div>
   <div id="attack" class="panel"><div id="atk-t"></div><div id="atk-l"></div><div class="btns"><button id="atk-x">Cancel</button><button id="atk-go">Attack</button></div></div>
 </div>
 <div id="floats"></div>

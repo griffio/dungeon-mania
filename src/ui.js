@@ -1,6 +1,6 @@
 import { TILE } from './dungeon.js';
 import { clockText, minutesFor } from './rules.js';
-import { TORCH_MINUTES, OIL_MINUTES } from './defs.js';
+import { TORCH_MINUTES, OIL_MINUTES, SPELLS } from './defs.js';
 import { Automap } from './automap.js';
 
 const $ = (s) => document.querySelector(s);
@@ -72,6 +72,17 @@ export class UI {
     if (this.automap) this.automap.key = '';
   }
 
+  // Statuses as small chips on a card: what's on them, and for how long.
+  chips(m) {
+    const s = m.status, out = [];
+    if (s.slimed) out.push(['slime', `slime · ${s.slimed} round${s.slimed === 1 ? '' : 's'}`]);
+    if (s.hidden) out.push(['hid', 'hidden']);
+    if (s.shield) out.push(['mag', `shield · ${Math.ceil(s.shield * 6)} rd`]);
+    if (s.protection) out.push(['gold', `protection · ${Math.ceil(s.protection * 6)} rd`]);
+    if (s.lightSpell) out.push(['mag', `light · ${Math.ceil(s.lightSpell / 10)} turns`]);
+    return out.length ? `<div class="chips">${out.map(([c, t]) => `<b class="${c}">${t}</b>`).join('')}</div>` : '';
+  }
+
   describe(g, i) {
     const d = g.dungeon, [x, y] = d.xy(i), t = TILE[d.t[i]], room = d.roomOf(i), door = d.doors.get(i);
     const at = `<span class="xy">${x}, ${y}</span>`;
@@ -107,8 +118,16 @@ export class UI {
       c.innerHTML = `<div class="nm"><span>${m.def.name}</span><i>${pos}</i></div><div class="rl">${state}</div>`
         + `<div class="hp"><b style="width:${Math.round(100 * Math.max(0, m.hp) / m.def.hp)}%"></b></div><div class="hpt">HP ${m.hp}/${m.maxHp}${m.diseased ? ' (diseased)' : ''} · AC ${m.def.ac} · ${m.def.missile.name} ${m.ammo}</div>`
         + `<div class="lt">${light}</div><div class="burn"><b style="width:${Math.round(burn * 100)}%"></b></div>`
-        + `<div class="kit">${spare} torch${spare === 1 ? '' : 'es'}${m.def.kit.lantern ? ` · ${m.flasks} oil` : ''}${m.broken ? ' · <em>weapon cracked</em>' : ''}</div>`;
+        + `<div class="kit">${spare} torch${spare === 1 ? '' : 'es'}${m.def.kit.lantern ? ` · ${m.flasks} oil` : ''}${m.items.potion ? ` · ${m.items.potion} potion${m.items.potion === 1 ? '' : 's'}` : ''}`
+        + `${m.items.poolWater ? ` · ${m.items.poolWater} pool water` : ''}${m.empty ? ` · ${m.empty} empty flask${m.empty === 1 ? '' : 's'}` : ''}${m.broken ? ' · <em>weapon cracked</em>' : ''}</div>`
+        + (m.def.spells ? `<div class="kit">${m.memorised.length ? m.memorised.map((id) => `${SPELLS[id].icon} ${SPELLS[id].name}`).join(' · ') : '<em>no spells left</em>'}</div>` : '')
+        + this.chips(m);
     }
+
+    // the spell waiting for a target
+    const cp = $('#castprompt');
+    if (g.casting) { cp.innerHTML = `${g.casting.caster.def.name}: ${SPELLS[g.casting.spell].name}. Choose ${SPELLS[g.casting.spell].target === 'foe' ? 'a foe' : SPELLS[g.casting.spell].target === 'area' ? 'where' : 'a companion'} <span>Esc to cancel</span>`; cp.classList.add('show'); }
+    else cp.classList.remove('show');
 
     // the marching order, 2 x 2: tap one, then another, to swap them
     const ord = $('#order');

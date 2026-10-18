@@ -1,12 +1,15 @@
-// Denizen brains (PLAN.md 9), for M3's first monsters. A foe's turn is a plan: a route to walk
+// Denizen brains (PLAN.md 9). A foe's turn is a plan: a route to walk
 // (up to its encounter move) and, at the end of it, a party member to attack. The game carries
 // it out with the same walking and attack code the party uses.
 //   advance: rats go for the weakest, everyone else for the nearest they can reach
 //   flee: a broken group runs from the party (morale, PLAN.md 3.4)
+//   loop: broken goblins run their escape loop round through 18 and back (room script)
+// Brannoc holds the line: a foe that steps next to a fighter stops there (PLAN.md 4).
 
 // Foes see the party: in line of sight, and lit or within their infravision (60 ft).
 export const INFRA = 12;
 export function canSee(g, foe, m) {
+  if (m.status?.hidden) return false;
   const d = g.dungeon, [fx, fy] = d.xy(foe.tile), [mx, my] = d.xy(m.tile);
   const dist = Math.hypot(fx - mx, fy - my);
   if (dist > 1.5 && !(g.lit[m.tile] || (foe.def.infravision && dist <= INFRA))) return false;
@@ -15,11 +18,13 @@ export function canSee(g, foe, m) {
 
 export function foeTurn(g, foe) {
   const d = g.dungeon;
-  const targets = g.party.filter((m) => !m.dead && !m.downed);
-  if (!targets.length) return null;
+  const targets = g.party.filter((m) => !m.dead && !m.downed && !m.status.hidden);
   const blocked = g.blockedFor(foe);
-  const opts = { closed: false, pits: false, blocked };
+  // denizens open unlocked doors as they go (not locked ones, nor the one-way block from inside)
+  const opts = { closed: true, pits: false, blocked };
+  if (foe.state === 'looping') return loop(g, foe, blocked);
   if (foe.state === 'fleeing') return flee(g, foe, opts);
+  if (!targets.length) return null;
 
   // already beside someone: hit them (the weakest, for rats)
   const pick = (list) => (foe.def.rig === 'rat' ? list.reduce((a, b) => (b.hp < a.hp ? b : a)) : list[0]);
@@ -49,9 +54,31 @@ export function foeTurn(g, foe) {
     if (spent + c > foe.def.mv) break;
     spent += c; k++;
   }
-  const route = path.slice(0, k + 1);
+  let route = path.slice(0, k + 1);
+  // the fighter holds the line: stepping next to him ends the move
+  const fighters = g.party.filter((m) => m.def.cls === 'Fighter' && !m.dead && !m.downed);
+  if (!fighters.some((m) => g.inMelee(foe.tile, m.tile))) {
+    const stop = route.findIndex((i, n) => n > 0 && fighters.some((m) => g.inMelee(i, m.tile)));
+    if (stop > 0) route = route.slice(0, stop + 1);
+  }
   const end = route[route.length - 1];
   return { route: route.length > 1 ? route : null, target: g.inMelee(end, goal.m.tile) ? goal.m : null };
+}
+
+// The goblins' loop: along the path the room script laid out, as far as this turn's move goes,
+// leaping the pit on the way. At the end of it they're back, behind the party.
+function loop(g, foe, blocked) {
+  const path = foe.loop, start = foe.loopK;
+  // somebody in the way: the run is over, and it fights
+  if (start + 1 < path.length && blocked[path[start + 1]]) { foe.state = 'fighting'; foe.loop = null; return foeTurn(g, foe); }
+  let k = start;
+  while (k + 1 < path.length && k - start < foe.def.mv && !blocked[path[k + 1]]) k++;
+  foe.loopK = k;
+  if (k === path.length - 1) {
+    foe.state = 'fighting'; foe.loop = null;
+    if (!g.scriptState.goblins?.back) { (g.scriptState.goblins ||= {}).back = true; g.say('Running feet behind you: the goblins are back, by the door you came in!'); }
+  }
+  return { route: k > start ? path.slice(start, k + 1) : null, target: null };
 }
 
 // Run: the reachable tile furthest from the party.

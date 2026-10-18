@@ -63,8 +63,17 @@ export class SceneBuilder {
       const room = d.roomOf(i), tile = TILE[t], floorMat = t === T.CAVE ? 5 : room?.id === '12' ? 9 : 2;
       const floorCol = t === T.CAVE ? C.cave : room && !room.passage ? C.floor : C.passage;
       const h = this.floorH(i);
-      if (t === T.PIT) {
+      if (t === T.PIT && this.state.hiddenPits?.has(i)) {
+        // a covered pit: flagstones like any other, until someone finds it
+        box.add(cx, -0.1, cz, 1, 0.1, 1, 0, jitter(floorCol, seed, 0.06), floorMat);
+        continue;
+      } else if (t === T.PIT) {
         box.add(cx, h - 0.1, cz, 1, 0.1, 1, 0, C.pitBottom);
+        // the rope bridge over room 3's pit: planks lashed between two ropes
+        if (this.state.bridged?.has(i)) {
+          for (let k = 0; k < 4; k++) box.add(x + 0.15 + k * 0.24, -0.06, cz, 0.16, 0.04, 0.8, 0, jitter(C.wood, hash2(x + k, y)), 7);
+          for (const s of [-0.42, 0.42]) box.add(cx, 0.15, cz + s, 1, 0.03, 0.03, 0, [0.35, 0.28, 0.16]);
+        }
       } else if (t === T.WATER) {
         box.add(cx, h - 0.1, cz, 1, 0.1, 1, 0, C.liner, 2);
         box.add(cx, WATER_TOP - 0.02, cz, 1, 0.02, 1, 0, C.water, 3);

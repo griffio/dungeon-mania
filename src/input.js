@@ -120,6 +120,7 @@ export class Input {
     const cam = g.camera;
     // number keys fire the action bar's buttons
     if (/^[1-9]$/.test(e.key)) { const a = g.ui.actionList?.[Number(e.key) - 1]; if (a) g.act(a.id); return; }
+    if (e.key === 'Escape' && g.casting) { g.casting = null; g.ui.update(g); return; }
     if (g.mode === 'encounter') {
       if (e.key === ' ') { e.preventDefault(); g.endPhase(); return; }
       if (e.key === 'Enter') { g.confirmAttack(); return; }

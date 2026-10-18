@@ -19,7 +19,7 @@ export class Automap {
 
   draw(g) {
     const d = g.dungeon;
-    const key = [g.L.id, g.exploredVersion, g.visited.size, g.wallsVersion, g.fogOn, g.selected, ...g.party.map((m) => g.eyeOf(m))].join();
+    const key = [g.L.id, g.unfoundTraps().length, g.exploredVersion, g.visited.size, g.wallsVersion, g.fogOn, g.selected, ...g.party.map((m) => g.eyeOf(m))].join();
     if (key === this.key) return;
     this.key = key;
     const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -43,7 +43,7 @@ export class Automap {
       const t = d.t[d.idx(x, y)];
       c.fillStyle = t === T.WATER ? WATER : FLOOR;
       c.fillRect(x, y, 1, 1);
-      if (t === T.PIT) { c.fillStyle = PIT; c.beginPath(); c.arc(x + 0.5, y + 0.5, 0.32, 0, Math.PI * 2); c.fill(); }
+      if (t === T.PIT && !g.hiddenTrapAt(d.idx(x, y))) { c.fillStyle = PIT; c.beginPath(); c.arc(x + 0.5, y + 0.5, 0.32, 0, Math.PI * 2); c.fill(); }
       if (t === T.STAIRS) { c.strokeStyle = INK; c.lineWidth = 0.08; for (const f of [0.25, 0.5, 0.75]) { c.beginPath(); c.moveTo(x + f, y + 0.1); c.lineTo(x + f, y + 0.9); c.stroke(); } }
     }
     // rock beside explored floor: inked edge and hatching, as the book draws it

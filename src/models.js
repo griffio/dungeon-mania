@@ -17,13 +17,26 @@ function drawLying(sets, def, L, p) {
     at(sph, W(0, 0.05, 0), 0.3, 0.16, 0.5, L.body);
     return null;
   }
-  // body along the ground, head at the far end, a dark pool beneath
-  at(cyl, W(0, 0.052, 0.05), 0.62, 0.006, 0.62, [0.12, 0.01, 0.01]);
+  // body along the ground, head at the far end, a dark pool beneath (not for a sleeper)
+  if (!p.asleep) at(cyl, W(0, 0.052, 0.05), 0.62, 0.006, 0.62, [0.12, 0.01, 0.01]);
   at(box, W(0, 0.05, -0.05), 0.28, 0.16, 0.46, L.body, def.cls === 'Fighter' || def.cls === 'Cleric' ? 8 : 0);
   at(sph, W(0, 0.05, 0.27), 0.22, 0.2, 0.22, L.skin);
   at(box, W(-0.08, 0.05, -0.42), 0.09, 0.08, 0.36, L.trim);
   at(box, W(0.08, 0.05, -0.42), 0.09, 0.08, 0.36, L.trim);
   return null;
+}
+
+// Green slime (PLAN.md 2, the blob): on a wall, a wet sheen you'd only notice in good light
+// (brighter once noticed); on a victim, a glistening mass over head and shoulders.
+export function drawSlime(sets, def, p, t) {
+  const { sph } = sets, wob = 1 + 0.06 * Math.sin(t * 3 + p.breath);
+  if (p.on) {
+    sph.add(p.on.x, p.y + 0.5, p.on.z, 0.5 * wob, 0.62 / wob, 0.5 * wob, t * 0.3, def.look.body, 3);
+    return;
+  }
+  // flattened against the west wall of the corridor, up near the ceiling
+  const k = p.spotted ? 1 : 0.55;
+  sph.add(p.x - 0.47, p.y + 1.1, p.z, 0.1, 0.7 * k * wob, 0.75 * k, 0, def.look.body.map((v) => v * (p.spotted ? 1 : 0.5)), 3);
 }
 
 // A giant rat (PLAN.md 2, the quadruped family): a long body low to the ground, scurrying legs,
@@ -58,13 +71,14 @@ const HIP = 0.5, SHOULDER = 0.88, LEG = 0.44, ARM = 0.36;
 // Draws into sets {box, cyl, sph, cone}; returns the flame's world position, or null.
 export function drawHero(sets, def, p, t) {
   const { box, cyl, sph, cone } = sets, G = def.gear;
-  const L = p.flash ? tint(def.look, p.flash) : def.look;
+  let L = p.flash ? tint(def.look, p.flash) : def.look;
+  if (p.hidden) L = Object.fromEntries(Object.entries(L).map(([k, c]) => [k, c.map((v) => v * 0.3)])); // in the shadows
   if (p.lying) return drawLying(sets, def, L, p);
-  const cy = Math.cos(p.yaw), sy = Math.sin(p.yaw);
+  const cy = Math.cos(p.yaw), sy = Math.sin(p.yaw), k = def.scale || 1; // goblins are small
   // local (right, up, forward) -> world; local +z is the way the figure faces
-  const W = (lx, ly, lz) => [p.x + lx * cy - lz * sy, p.y + ly, p.z + lx * sy + lz * cy];
+  const W = (lx, ly, lz) => [p.x + (lx * cy - lz * sy) * k, p.y + ly * k, p.z + (lx * sy + lz * cy) * k];
   const add = (set, at, sx, sh, sz, col, mat = 0, emis = 0, pitch = 0, roll = 0, yawOff = 0) =>
-    set.add(at[0], at[1], at[2], sx, sh, sz, p.yaw + yawOff, col, mat, emis, pitch, roll);
+    set.add(at[0], at[1], at[2], sx * k, sh * k, sz * k, p.yaw + yawOff, col, mat, emis, pitch, roll);
   // A limb hanging from a joint, swung forward (swing < 0 brings the far end forward) about the
   // figure's side axis. Returns the far end in local coordinates.
   const limb = (set, jx, jy, len, w, swing, col, mat = 0) => {

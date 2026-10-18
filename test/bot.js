@@ -26,11 +26,28 @@ async function fight(g) {
     const m = g.ableParty().find((x) => !x.acted);
     if (!m) { g.endPhase(); continue; }
     g.select(m.id);
-    if (g.actions().some((a) => a.id === 'wave')) { g.act('wave'); continue; }
-    if (g.actions().some((a) => a.id === 'bandage')) { g.act('bandage'); continue; }
-    const foes = g.activeFoes().filter((f) => g.foeShown(f));
-    const beside = foes.find((f) => g.inMelee(m.tile, f.tile));
+    const ids = g.actions().map((a) => a.id);
+    if (ids.includes('wave')) { g.act('wave'); continue; }
+    if (ids.includes('bandage')) { g.act('bandage'); continue; }
+    // fire on the slime, before anything else
+    if (ids.includes('burn')) { g.act('burn'); await settle(g); continue; }
+    if (ids.includes('oil')) { g.act('oil'); await settle(g); continue; }
+    const foes = g.activeFoes().filter((f) => g.foeShown(f) && f.def.rig !== 'slime');
+    // spells: Cure on the worst hurt, Sleep on a crowd, Magic Missile on one
+    const hurt = g.party.find((a) => !a.dead && (a.downed || a.hp <= a.maxHp / 2) && (a === m || g.inMelee(m.tile, a.tile)));
+    if (hurt && ids.includes('cast:cure')) { g.act('cast:cure'); g.tap(hurt.tile); await settle(g); if (!g.casting) continue; g.casting = null; }
+    const awake = foes.filter((f) => !f.status.asleep);
+    if (awake.length >= 2 && ids.includes('cast:sleep')) { g.act('cast:sleep'); g.tap(awake[0].tile); await settle(g); if (!g.casting) continue; g.casting = null; }
+    if (awake.length && ids.includes('cast:missile')) { g.act('cast:missile'); g.tap(awake[0].tile); await settle(g); if (!g.casting) continue; g.casting = null; }
+    const beside = foes.find((f) => g.inMelee(m.tile, f.tile) && g.planAttack(m, f).ok);
     if (beside) { g.attackPlan = g.planAttack(m, beside); g.confirmAttack(); await settle(g); continue; }
+    // nobody to fight but someone down: go to them, and bandage
+    const down = g.party.find((a) => a.downed && !a.dead);
+    if (down && !foes.length && !m.moved && !g.inMelee(m.tile, down.tile)) {
+      const d = g.dungeon, reach = g.reachFor(m);
+      const spot = reach && [...Array(d.n).keys()].filter((i) => reach[i] < Infinity && g.inMelee(i, down.tile)).sort((x, y) => reach[x] - reach[y])[0];
+      if (spot !== undefined) { g.tap(spot); g.tap(spot); await settle(g); if (g.actions().some((a) => a.id === 'bandage')) { g.act('bandage'); } continue; }
+    }
     if (!m.moved && foes.length) {
       const reach = g.reachFor(m), d = g.dungeon;
       let best = -1, bd = Infinity;
@@ -63,6 +80,24 @@ async function descend(g) {
   }
 }
 
+// Heal up: a breather when the room allows it, then the pool once it's known and the party is
+// below two thirds. Returns true if it did something.
+async function tend(g) {
+  const ids = g.actions().map((a) => a.id), hp = g.party.reduce((a, m) => a + (m.dead ? 0 : m.hp), 0), max = g.party.reduce((a, m) => a + (m.dead ? 0 : m.maxHp), 0);
+  if (hp >= max) return false;
+  if (ids.includes('breather')) { g.act('breather'); return true; }
+  if (hp * 3 >= max * 2) return false;
+  if (ids.includes('drink')) { g.act('drink'); return true; }
+  const d = g.dungeon, pool = [...Array(d.n).keys()].find((i) => d.t[i] === T.POOL && g.explored[i]);
+  if (pool === undefined) return false;
+  const [px, py] = d.xy(pool);
+  for (const [dx, dy] of [[-1, 0], [1, 0], [0, 1], [0, -1]]) {
+    const p = g.plan(d.idx(px + dx, py + dy));
+    if (p && !p.blocked && p.path.length > 1 && p.door < 0) { g.go(p); await settle(g); return true; }
+  }
+  return false;
+}
+
 export async function explore(seed) {
   const g = new Game({ ui, seed });
   await descend(g);
@@ -93,6 +128,8 @@ export async function explore(seed) {
       }
     }
     if (g.actions().some((a) => a.id === 'lever')) { g.act('lever'); continue; }
+    // look after the party: rest when allowed, and go back to the healing pool when hurt
+    if (await tend(g)) continue;
     // the frontier: seen ground with unseen ground beside it
     const frontier = [];
     for (let i = 0; i < d.n; i++) {
