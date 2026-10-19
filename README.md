@@ -2,7 +2,7 @@
 
 A turn-based Dungeons & Dragons dungeon crawl in WebGPU, for desktop Chrome and iPad. It recreates the dungeon designed in *What Is Dungeons & Dragons?* (Penguin, 1982). The full design is in [PLAN.md](PLAN.md).
 
-**Status: M0–M7 done, M8 (polish and ship) all but deployed.** The whole crawl plays, from the surface to the sword and back out, voiced, with a talking statue.
+**Status: M0–M8 done; live at https://dungeon-mania.pages.dev.** The whole crawl plays, from the surface to the sword and back out, voiced, with a talking statue.
 
 ![The title, over the temple ruins at sunset](docs/screenshots/title.jpg)
 
@@ -50,7 +50,11 @@ Start a new adventure on Story, Normal or Classic (PLAN.md §3.8). The game auto
 
 ## The oracle
 
-The statue in room 21 answers your own questions. `npm run oracle` starts its Worker on http://localhost:8787, using `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN` (Workers AI) and the ElevenLabs key from `.env`. The game finds it there when served locally; `?oracle=<url>` points it elsewhere, and `?oracle=` turns it off. Without it, the statue falls back to canned couplets, so the game never needs the network. To deploy: `cd worker && npx wrangler secret put ELEVENLABS_API_KEY && npx wrangler deploy`.
+The statue in room 21 answers your own questions. `npm run oracle` starts its Worker on http://localhost:8787, using `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN` (Workers AI) and the ElevenLabs key from `.env`. The game finds it there when served locally; `?oracle=<url>` points it elsewhere, and `?oracle=` turns it off. Without it, the statue falls back to canned couplets, so the game never needs the network. 
+
+## Hosting
+
+The game is on Cloudflare Pages at https://dungeon-mania.pages.dev. `npm run deploy` (after `npx wrangler login`) copies what the browser loads (`index.html`, `src/`, `assets/`) into `dist/` and deploys it, with the oracle's Worker behind Pages Functions at `/api` (`functions/api/[[path]].js`, configured in `wrangler.toml`). The statue's answers use Workers AI on its free tier through the project's AI binding, so no key is stored for them. Its voice is off until the ElevenLabs key is added as a secret (`npx wrangler pages secret put ELEVENLABS_API_KEY`); until then the answers are text only. No key ever reaches the browser.
 
 ## Textures and portraits
 

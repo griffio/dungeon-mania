@@ -69,10 +69,11 @@ async function cachePut(env, key, value) {
   memory.set(key, value);
 }
 
-function cors(env, origin) {
+// The game's own page (behind Pages Functions), localhost, or an origin listed in ALLOWED_ORIGINS.
+function cors(env, origin, self) {
   const allowed = (env.ALLOWED_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean);
   const local = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin || '');
-  const ok = !origin || local || allowed.includes(origin);
+  const ok = !origin || origin === self || local || allowed.includes(origin);
   return { ok, headers: ok && origin ? { 'Access-Control-Allow-Origin': origin, 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type', Vary: 'Origin' } : {} };
 }
 const json = (body, status, headers) => new Response(JSON.stringify(body), { status, headers: { ...headers, 'Content-Type': 'application/json' } });
@@ -80,7 +81,7 @@ const json = (body, status, headers) => new Response(JSON.stringify(body), { sta
 export default {
   async fetch(request, env) {
     const url = new URL(request.url), origin = request.headers.get('Origin');
-    const { ok, headers } = cors(env, origin);
+    const { ok, headers } = cors(env, origin, url.origin);
     if (request.method === 'OPTIONS') return new Response(null, { status: ok ? 204 : 403, headers });
     if (!ok) return json({ error: 'origin' }, 403, headers);
     if (request.method !== 'POST') return json({ error: 'method' }, 405, headers);

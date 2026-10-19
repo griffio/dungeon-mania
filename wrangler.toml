@@ -1,0 +1,12 @@
+# The game on Cloudflare Pages (PLAN.md 12): the static game from dist/ (npm run build), and the
+# oracle's Worker behind Pages Functions at /api (functions/api/[[path]].js).
+#   npm run deploy              (needs `wrangler login`, or CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID)
+# The statue's answers use Workers AI (the free tier: the game allows three questions a day).
+# Its voice is off unless the ElevenLabs key is set as a secret:
+#   npx wrangler pages secret put ELEVENLABS_API_KEY
+name = "dungeon-mania"
+pages_build_output_dir = "dist"
+compatibility_date = "2026-09-01"
+
+[ai]
+binding = "AI"

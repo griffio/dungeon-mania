@@ -35,6 +35,9 @@ test('the Worker answers from the facts, lies when told, caches, and refuses str
   assert.equal(e.calls, 1, 'the second ask cost nothing');
   const bad = await worker.fetch(post('/api/oracle', body, 'https://elsewhere.example'), e);
   assert.equal(bad.status, 403);
+  // behind Pages Functions the game's own page asks: same origin, always allowed
+  const own = await worker.fetch(post('/api/oracle', body, 'http://oracle.test'), e);
+  assert.equal(own.status, 200);
   const canned = await (await worker.fetch(post('/api/oracle', { question: 'Why?' }), e)).json();
   assert.equal(canned.answer, NOT_HOW);
   const noVoice = await worker.fetch(post('/api/tts', { text: 'Hello.' }), e);

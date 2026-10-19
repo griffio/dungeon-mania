@@ -5,3 +5,5 @@ __pycache__/
 .texture-cache/
 .audio-cache/
 .oracle-cache/
+dist/
+.wrangler/
