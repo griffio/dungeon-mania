@@ -187,7 +187,10 @@ export const SFX = [
   ['lock_pick', 'Lock picking: small metal tools clicking and scraping inside an old lock, then a click', 2, false, 0.6],
   ['lever', 'Heavy iron lever pulled with a clunk, then distant stone mechanism rumbling', 2, false, 0.6],
   ['search', 'Hands searching rough stone walls, tapping and scraping, shuffling feet, quiet', 2.5, false, 0.5],
-  ['step', 'Single soft footstep of a leather boot on a stone floor', 0.5, false, 0.6],
+  // footsteps: three muted scuffs, picked at random so walking doesn't tick like a clock
+  ['step_1', 'One short muted footstep: the quick scuff of a soft leather sole set down on gritty stone, a brief dry tap, no drag, no scrape, quiet and close, no echo, no music', 0.5, false, 0.8],
+  ['step_2', 'A single footstep: a soft leather sole landing with a short dull scuff on a dusty stone floor, crisp and brief, no dragging, close, no echo', 0.5, false, 0.8],
+  ['step_3', 'One soft step of a leather shoe on flagstone, a tiny dull scuff as it lands, short and clean, no slide or drag, muted, close, no echo', 0.5, false, 0.8],
   ['torch_light', 'Torch catching fire with a whoosh and crackle', 1.5, false, 0.6],
   ['fall', 'Body falling into a pit and landing hard on stone with a thud and grunt', 1.5, false, 0.6],
   ['splash', 'Wading footsteps splashing through knee deep water', 1.5, false, 0.6],

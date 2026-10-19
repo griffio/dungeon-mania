@@ -299,10 +299,19 @@ export class Game {
 
   // ---------- sound (PLAN.md 8.1) ----------
   // A sound effect, at a unit or a tile (or everywhere).
-  sfx(id, at) {
+  sfx(id, at, vol = 1) {
     if (!this.audio) return;
-    const pos = at === undefined ? null : typeof at === 'number' ? this.dungeon.xy(at).map((v) => v + 0.5) : [at.x, at.z];
-    this.audio.play(id, { pos });
+    const pos = at === undefined || at === null ? null : typeof at === 'number' ? this.dungeon.xy(at).map((v) => v + 0.5) : [at.x, at.z];
+    this.audio.play(id, { pos, vol });
+  }
+  // A footstep as someone walks onto tile i: a muted scuff (one of three), a splash in water.
+  // Everyone the party can see makes them, the leader a little louder. (Math.random, not the
+  // game's dice: sound never changes what happens.)
+  footstep(u, i) {
+    if (!this.audio || (u.side === 'foe' && !this.foeShown(u))) return;
+    const water = this.dungeon.t[i] === T.WATER;
+    const vol = u === this.leader ? 0.55 : u.side === 'foe' ? 0.45 : 0.3;
+    this.sfx(water ? 'splash' : `step_${1 + Math.floor(Math.random() * 3)}`, u, water ? vol + 0.2 : vol);
   }
   // A party member says something about what just happened (now and then, never over a voice).
   bark(m, event, chance = 1) {
@@ -1546,6 +1555,7 @@ export class Game {
       const route = m.route;
       for (let s = before + 1; s <= a; s++) {
         traps.onEnter(this, m, route[s - 1], route[s]);
+        this.footstep(m, route[s]);
         if (m.status?.hidden && this.lit[route[s]]) skills.unhide(this, m, 'steps into the light and is seen');
         if (m === clockKeeper && this.mode === 'explore') {
           // probing with the pole, or weighed down with treasure: half speed
@@ -1566,7 +1576,6 @@ export class Game {
       if (m.side !== 'party') continue;
       const room = d.roomOf(this.eyeOf(m));
       if (room && (!room.passage || room.id === 'entrance' || room.id === 'temple') && !this.visited.has(room.id)) { this.visited.add(room.id); this.narrate(`room:${room.id}`); this.ui.viewKey = null; this.ui.update(this); this.wantSave = true; }
-      if (m === clockKeeper && Math.floor(m.k) !== before) this.sfx(d.t[m.route?.[Math.floor(m.k)] ?? m.tile] === T.WATER ? 'splash' : 'step', m);
     }
     // close up, the camera (and so the cutaway) follows whoever is walking: the leader, or the
     // unit taking its turn
