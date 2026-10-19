@@ -1,10 +1,9 @@
 // Run the oracle's Worker (worker/src/index.js) locally on Node, with no wrangler and no
-// dependencies (PLAN.md 8.2: until hosting is decided, it runs locally).
+// dependencies, as the game's Pages Functions run it live.
 //   npm run oracle           -> http://localhost:8787
 // The Worker's bindings are stood in for: env.AI calls Workers AI over the REST API with
-// CLOUDFLARE_ACCOUNT_ID / CLOUDFLARE_API_TOKEN, env.ELEVENLABS_API_KEY is the voice key, and
-// env.CACHE is a folder (.oracle-cache/, gitignored). Keys come from the environment or .env (any
-// letter case) and stay on this machine.
+// CLOUDFLARE_ACCOUNT_ID / CLOUDFLARE_API_TOKEN, and env.CACHE is a folder (.oracle-cache/,
+// gitignored). Keys come from the environment or .env (any letter case) and stay on this machine.
 import { createServer } from 'node:http';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import worker from '../worker/src/index.js';
@@ -22,7 +21,6 @@ if (!account || !token) { console.error('Needs CLOUDFLARE_ACCOUNT_ID and CLOUDFL
 const cacheDir = new URL('.oracle-cache/', root);
 await mkdir(cacheDir, { recursive: true });
 const env = {
-  ELEVENLABS_API_KEY: key('ELEVENLABS_API_KEY') || key('ELEVEN_LABS_API_KEY'),
   ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS || '',
   AI: {
     async run(model, input) {

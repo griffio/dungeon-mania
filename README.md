@@ -50,11 +50,15 @@ Start a new adventure on Story, Normal or Classic (PLAN.md §3.8). The game auto
 
 ## The oracle
 
-The statue in room 21 answers your own questions. `npm run oracle` starts its Worker on http://localhost:8787, using `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN` (Workers AI) and the ElevenLabs key from `.env`. The game finds it there when served locally; `?oracle=<url>` points it elsewhere, and `?oracle=` turns it off. Without it, the statue falls back to canned couplets, so the game never needs the network. 
+The statue in room 21 answers your own questions, in a rhyming couplet, with Cloudflare Workers AI (Llama 3.3 70B, on the free tier: the game allows three questions a day). Its Worker (`worker/src/index.js`) takes the question and a fact sheet from the game, and checks the origin, rate-limits callers and caches answers. The answers are text only.
+
+- **Live:** the Worker runs behind Pages Functions at `/api` on the game's own site (see Hosting). It reaches the model through the project's AI binding, so no key is stored.
+- **Locally:** `npm run oracle` runs the same Worker on Node at http://localhost:8787, calling Workers AI over its REST API with `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` from `.env`. The game finds it there when served locally.
+- `?oracle=<url>` points the game at another Worker, and `?oracle=` turns it off. Without one, the statue falls back to canned couplets, so the game never needs the network.
 
 ## Hosting
 
-The game is on Cloudflare Pages at https://dungeon-mania.pages.dev. `npm run deploy` (after `npx wrangler login`) copies what the browser loads (`index.html`, `src/`, `assets/`) into `dist/` and deploys it, with the oracle's Worker behind Pages Functions at `/api` (`functions/api/[[path]].js`, configured in `wrangler.toml`). The statue's answers use Workers AI on its free tier through the project's AI binding, so no key is stored for them. Its voice is off until the ElevenLabs key is added as a secret (`npx wrangler pages secret put ELEVENLABS_API_KEY`); until then the answers are text only. No key ever reaches the browser.
+The game is on Cloudflare Pages at https://dungeon-mania.pages.dev. `npm run deploy` (after `npx wrangler login`) copies what the browser loads (`index.html`, `src/`, `assets/`, and `worker/src/`, whose question rules the game shares) into `dist/` and deploys it, with the oracle's Worker behind Pages Functions at `/api` (`functions/api/[[path]].js`, configured in `wrangler.toml`). The build fails if a script imports a file it doesn't publish. No key ever reaches the browser.
 
 ## Textures and portraits
 
