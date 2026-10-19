@@ -5,6 +5,8 @@
 
 export function talk(g, { who, name, text, options }) {
   g.dialogue = { who, name, text, options: options?.length ? options : [{ label: 'Go on', run: () => {} }] };
+  // the quoted words are spoken, if there is a recording of them
+  g.audio?.sayQuotes(text);
   g.ui.update(g);
 }
 

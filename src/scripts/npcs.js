@@ -284,7 +284,7 @@ export const NPCS = {
         ['How do we get out of this room?', 'Search the west wall, stone by stone: / a door is hidden there, unknown.', 'Push the block the way you came; / it turns for those who speak its name.'],
         ['How do we free the prisoners?', 'Iron keys on Odric\'s belt / unlock the cells where the captives knelt.', 'Speak the goddess\'s name out loud, / and the bars will part before the crowd.'],
         ['How do we beat Odric?', 'Strike while his rite is still undone; / in heavy iron he\'s slow to run.', 'Only silver finds his heart; / steel and iron fall apart.'],
-        ['How do we pass the Arch-deaconess?', 'Bring her word of what was stolen: / a seated figure, stone and solemn.', 'Bow and call her "mother dear", / and she will let you pass from here.'],
+        ['How do we pass the Arch-deaconess?', 'Bring her word of what was stolen: / a seated figure, stone and solemn.', 'Bow and call her mother dear, / and she will let you pass from here.'],
       ].filter((q) => !(s.done || []).includes(q[0]));
       talk(g, { who: null, name: 'The statue', text: '"Ask."', options: [...Q.map((q) => ({ label: q[0], run: () => {
         const n = s.asked || 0;

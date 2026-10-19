@@ -85,6 +85,7 @@ function climb(g, u, where, tunnel = false) {
 // A fall: 1d6 per 10 ft.
 export function fall(g, u, ft) {
   const n = die(g.rng, 6) * (ft / 10);
+  g.sfx('fall', u);
   u.hp -= n;
   u.flash = 1;
   g.float(u, `-${n}`, 'dmg');
@@ -112,6 +113,7 @@ function drop(g, slime, u, tile) {
   slime.on = u; slime.state = 'feeding'; slime.spotted = true;
   slime.tile = tile; slime.x = u.x; slime.z = u.z;
   u.status.slimed = 6;
+  g.sfx('mon_slime', u);
   g.say(`Something cold and wet drops from the wall onto ${u.def.name}: green slime! It is already eating into armour and flesh.`);
   g.startEncounter('slime', { partySurprised: false, foesSurprised: false });
 }
@@ -120,6 +122,7 @@ export function burn(g, m, slime, how) {
   const n = die(g.rng, how === 'oil' ? 8 : 4);
   if (how === 'oil') m.flasks--;
   m.acted = true;
+  g.sfx('torch_light', slime);
   const victim = slime.on;
   g.say(`${m.def.name} ${how === 'oil' ? 'dashes a flask of burning oil over' : 'thrusts the torch into'} the slime${victim ? ` on ${victim === m ? 'themself' : victim.def.name}` : ''}: ${n} fire.`);
   g.hurt(slime, n, m);

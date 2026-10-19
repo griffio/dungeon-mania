@@ -21,6 +21,8 @@ export function takeSword(g) {
   g.advance(1);
   g.say(`Behind the rock, wrapped in oilcloth, lies a long sword with a plain grey hilt. As ${w.def.name} closes a hand round it the blade wakes with a low hum. The Sword of the Sorcerer (+2)! Beside it, a bag of ${treasure.gain(g, { cp: 5 })}.`);
   g.ui.banner?.('The Sword of the Sorcerer');
+  g.sfx('sting_sword');
+  g.narrate('moment:sword');
   g.say('The sword hums near anything Chaotic, 20 ft and closing. Now get out alive: up the entrance tunnel, or by Odric\'s stairs from room 15.');
   realert(g);
 }
@@ -81,7 +83,10 @@ export function leave(g) {
 export function finish(g, how) {
   g.mode = 'over';
   g.enc = null;
-  g.ui.ending?.(g, tally(g, how));
+  const t = tally(g, how);
+  g.sfx(how === 'dead' ? 'sting_defeat' : 'sting_victory');
+  g.narrate(`end:${t.key}`);
+  g.ui.ending?.(g, t);
 }
 export function tally(g, how) {
   const monsterXp = g.kills.reduce((n, d) => n + (d.xp || 0), 0);
@@ -102,13 +107,13 @@ export function tally(g, how) {
   const xp = how === 'dead' ? 0 : monsterXp + gp;
   const survivors = g.party.filter((m) => !m.dead && !m.status.stricken).length;
   const share = survivors ? Math.floor(xp / survivors) : 0;
-  let title, text;
-  if (how === 'dead') { title = 'The party has fallen'; text = 'Kollchap keeps its sword, and the goddess her offerings. Perhaps another band will come.'; }
-  else if (!st.sword) { title = 'Home, empty-handed'; text = 'The party limps back to the village with its scars and what silver it could carry. The sword still lies in the dark below the shrine.'; }
-  else if (st.odric === 'killed' && freed >= 8 && st.rosa === 'rescued') { title = 'The shrine is broken'; text = 'The Sword of the Sorcerer is recovered, Odric is dead, and every prisoner walks home. Kollchap village rings its bell all night. The shrine will be pulled down stone by stone.'; }
-  else if (st.odric === 'escaped') { title = 'The sword, but not the priest'; text = 'The Sword of the Sorcerer is recovered. But somewhere Odric is still alive, and he will not forget who robbed his goddess.'; }
-  else { title = 'The sword recovered'; text = `The Sword of the Sorcerer is recovered and carried home in triumph.${freed ? ` ${freed} prisoners walk home with you.` : ''}`; }
-  return { how, title, text, rows, xp, share, survivors };
+  let title, text, key;
+  if (how === 'dead') { key = 'dead'; title = 'The party has fallen'; text = 'Kollchap keeps its sword, and the goddess her offerings. Perhaps another band will come.'; }
+  else if (!st.sword) { key = 'empty'; title = 'Home, empty-handed'; text = 'The party limps back to the village with its scars and what silver it could carry. The sword still lies in the dark below the shrine.'; }
+  else if (st.odric === 'killed' && freed >= 8 && st.rosa === 'rescued') { key = 'broken'; title = 'The shrine is broken'; text = 'The Sword of the Sorcerer is recovered, Odric is dead, and every prisoner walks home. Kollchap village rings its bell all night. The shrine will be pulled down stone by stone.'; }
+  else if (st.odric === 'escaped') { key = 'escaped'; title = 'The sword, but not the priest'; text = 'The Sword of the Sorcerer is recovered. But somewhere Odric is still alive, and he will not forget who robbed his goddess.'; }
+  else { key = 'sword'; title = 'The sword recovered'; text = `The Sword of the Sorcerer is recovered and carried home in triumph.${freed ? ` ${freed} prisoners walk home with you.` : ''}`; }
+  return { how, key, title, text, rows, xp, share, survivors };
 }
 
 // ---------- the action bar's share ----------

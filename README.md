@@ -36,6 +36,10 @@ The party follows in marching order: single file in passages, closing up two abr
 - `test/dungeon.test.js` checks the rules from PLAN.md 7.3: every room is reachable and can be left again, no single door cuts off room 23, and Odric's keys can be reached before the locks they open.
 - `tools/trace-map.py` (Python 3 with Pillow and NumPy) traces the scan into a draft grid. Run `python3 tools/trace-map.py --overlay 0,0,27,34` to draw the curated map over the scan and check it.
 
+## Sound
+
+`tools/generate-audio.mjs` makes every voice, sound effect and music drone with ElevenLabs, from `tools/audio-manifest.mjs`, into `assets/audio/` (it needs `ELEVENLABS_API_KEY` in the environment or `.env`). `--dry` counts the characters first, and existing files are kept, so a rerun only fills gaps. The game plays them through `src/audio.js`: room ambience and reverb, music for the moment, the narrator, the party's barks and people's lines. Sound starts on the first tap or key; 🔊 mutes it. Lines without a recording are simply not voiced.
+
 ## Textures and portraits
 
 `tools/generate-textures.py` makes the surface textures with Gemini (`gemini-3.1-flash-image`), from the prompts in `tools/texture-manifest.json`. `tools/generate-portraits.py` makes the 10 character portraits and 16 bestiary cards in `assets/portraits/` the same way, from `tools/portrait-manifest.json` (about $1.80 for the set), trimming any painted paper margin. Both need a Gemini key in `GEMINI_API_KEY` or the project's `.env`, cache raw output in `.texture-cache/`, share a cost ledger there, and stop before a run passes its spending cap. The images carry Google's invisible SynthID watermark. The game runs without the textures: any that fail to load fall back to the plain procedural surface.

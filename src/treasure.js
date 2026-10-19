@@ -50,6 +50,8 @@ export function gain(g, loot, at) {
     parts.push(`${n > 1 ? `${n} ` : 'a '}${ITEMS[id].name.toLowerCase().replace('scroll', n > 1 ? 'scrolls' : 'scroll')}`);
   }
   if (loot.robes) { g.state.robes = true; parts.push('green and white robes, enough for everyone'); }
+  // (sound never touches the dice: without audio, nothing here rolls)
+  if (parts.length && g.audio) { g.sfx('coins', g.leader); g.bark(g.party.find((m) => !m.dead), 'treasure', 0.5); }
   return parts.join(', ');
 }
 
@@ -124,6 +126,7 @@ export function disarmChest(g, c) {
 // Cure Light Wounds is cast on the victim.
 function spring(g, c, m) {
   c.sprung = true;
+  g.sfx('needle', m);
   const s = save(g.rng, m.def.cls, 'poison');
   if (s.ok) { g.say(`A needle pricks ${m.def.name}, but the poison doesn't take (${s.text}).`); return; }
   if (c.trap === 'paralysis') {
@@ -155,6 +158,7 @@ export function openChest(g, c) {
   const m = opener(g, c);
   if (c.lock && g.keys.has('odric') && c.room === '14') { c.lock = false; g.say(`One of Odric's keys fits ${chestName(c)}.`); }
   g.advance(1);
+  g.sfx('chest', c.i);
   if (c.trap && !c.disarmed && !c.sprung) spring(g, c, m);
   c.opened = true;
   const loot = { gp: c.gp, sp: c.sp, cp: c.cp, items: c.items, scrolls: c.scrolls, robes: c.robes };
@@ -220,6 +224,7 @@ export function smashUrn(g) {
   const m = masher(g);
   g.state.urns--;
   g.advance(1);
+  g.sfx('urn', m);
   g.noise(m.tile, 10);
   g.treasure.push({ ...g.data.URNS.pearl });
   g.rebuild();

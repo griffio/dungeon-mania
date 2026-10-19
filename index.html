@@ -105,6 +105,7 @@ button { font-family: var(--head); color: var(--parch); cursor: pointer; touch-a
 #info .hint { color: var(--dim); font-style: italic; }
 #info .log { margin-top: 6px; padding-top: 5px; border-top: 1px solid var(--line); font-size: 14px; color: var(--dim); }
 #info .log div:last-child { color: var(--parch); }
+#info .log .narr, #info .log .narr:last-child { color: #dcc690; font-style: italic; }
 #actions { position: absolute; left: calc(484px + var(--sa-l)); right: calc(12px + var(--sa-r)); bottom: calc(12px + var(--sa-b)); display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-start; pointer-events: none; }
 #actions button { pointer-events: auto; position: relative; width: 92px; min-height: 72px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 6px 4px; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
 #actions button .ic { font-size: 22px; line-height: 1; }
@@ -216,6 +217,7 @@ button { font-family: var(--head); color: var(--parch); cursor: pointer; touch-a
     <button id="frame" class="icon-btn" aria-label="Show the whole dungeon">⤢</button>
     <button id="party" class="icon-btn" aria-label="Go to the party">◉</button>
     <button id="viewbtn" class="icon-btn" aria-label="View options">👁</button>
+    <button id="mute" class="icon-btn" aria-label="Sound on or off">🔊</button>
     <button id="help" class="icon-btn" aria-label="How to play">?</button>
   </div>
   <div id="mapwrap" class="panel"><canvas id="automap"></canvas></div>

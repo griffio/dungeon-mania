@@ -181,6 +181,7 @@ export const SCRIPTS = {
       if (g.units.some((u) => u.tile === door.i && !u.dead)) { s.left = 1; g.say('The block grinds against whoever stands in the doorway, and stops for now.'); return; }
       door.open = false;
       g.doorsChanged();
+      g.sfx('door_block', door.i);
       const inside = g.party.some((m) => !m.dead && g.dungeon.roomOf(m.tile)?.id === '21');
       g.say(`With a heavy grinding, the stone block slides back into place.${inside ? ' There is no handle on this side. There must be another way out.' : ''}`);
     },

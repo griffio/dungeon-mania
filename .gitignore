@@ -3,3 +3,4 @@ tools/out/
 .env
 __pycache__/
 .texture-cache/
+.audio-cache/

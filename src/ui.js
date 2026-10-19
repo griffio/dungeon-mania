@@ -274,7 +274,7 @@ export class UI {
         : 'The way is clear. Walk to the hole at the far end, and climb down. Brannoc can fix his rope first, so nobody falls.'}</span>`);
     }
     if (!lines.length) lines.push(`<span class="hint">${g.selected ? `${g.member(g.selected).def.name} is selected and moves alone. Tap the card again to rejoin the party.` : 'Tap a tile to see the way there, and again to go. Tap a hero to move them alone.'}</span>`);
-    const log = g.log.slice(-4).map((e) => `<div>${e.text}</div>`).join('');
+    const log = g.log.slice(-4).map((e) => `<div${e.narr ? ' class="narr"' : ''}>${e.text}</div>`).join('');
     this.info.innerHTML = lines.join('') + `<div class="log">${log}</div>`;
   }
 

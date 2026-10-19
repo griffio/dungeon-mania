@@ -20,6 +20,7 @@ export const ODRIC = {
       const o = foe(g, 'odric'), rosa = foe(g, 'rosa');
       if (!o?.alive || !rosa?.alive) return;
       s.timer = RITE_ROUNDS;
+      g.narrate('moment:rite');
       g.say('Odric looks up from the bound halfling, knife in hand. "Visitors, at the goddess\'s hour! Kill them, my dead. She will have her blood either way."');
       g.say(`Rosa will be sacrificed in ${RITE_ROUNDS} rounds unless Odric is stopped!`);
     },

@@ -20,6 +20,7 @@ import * as treasure from './treasure.js';
 import * as recruits from './recruits.js';
 import * as dialogue from './dialogue.js';
 import * as ending from './ending.js';
+import * as NARRATION from './narration.js';
 import { MIN_DIST, MAX_DIST } from './input.js';
 
 const smoothstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
@@ -94,6 +95,7 @@ export class Game {
     this.followers = [];      // who walks behind the party: the prisoners, a guided Arch-deaconess
     this.dialogue = null;     // someone talking, waiting for the party's answer
     this.roundsFought = 0;
+    this.audio = null;        // set by main.js in the browser; every sound call is a no-op without it
     // groups of denizens share morale and a room script
     this.groups = {};
     for (const L of Object.values(this.levels)) for (const f of L.foes) (this.groups[f.group] ||= { count: 0, deaths: 0, first: false, half: false }).count++;
@@ -207,6 +209,7 @@ export class Game {
   }
   revealTrap(t, text) {
     if (t.foe) t.foe.spotted = true; else t.found = true;
+    this.bark(this.party.find((m) => !m.dead), 'trap');
     this.say(`${text}.`);
     this.rebuild();
     this.refreshPreview();
@@ -261,6 +264,7 @@ export class Game {
     } else {
       this.selected = this.selected === id ? null : id;
     }
+    if (this.selected) this.bark(m, 'select', 0.6);
     this.cancel();
   }
 
@@ -277,6 +281,28 @@ export class Game {
   say(text) {
     this.log.push({ at: this.clock, text });
     if (this.log.length > 60) this.log.shift();
+    this.audio?.sayQuotes(text);
+    this.ui?.update(this);
+  }
+
+  // ---------- sound (PLAN.md 8.1) ----------
+  // A sound effect, at a unit or a tile (or everywhere).
+  sfx(id, at) {
+    if (!this.audio) return;
+    const pos = at === undefined ? null : typeof at === 'number' ? this.dungeon.xy(at).map((v) => v + 0.5) : [at.x, at.z];
+    this.audio.play(id, { pos });
+  }
+  // A party member says something about what just happened (now and then, never over a voice).
+  bark(m, event, chance = 1) {
+    if (!this.audio || !m || m.side !== 'party' || m.dead || this.rng() > chance) return;
+    this.audio.bark(m.id, event, { force: event === 'downed' });
+  }
+  // The narrator: the line goes in the log, and is read aloud.
+  narrate(key) {
+    const [kind, id] = key.split(':'), text = kind === 'room' ? NARRATION.ROOMS[id] : kind === 'end' ? NARRATION.ENDINGS[id] : NARRATION.MOMENTS[id];
+    if (!text) return;
+    this.log.push({ at: this.clock, text, narr: true });
+    this.audio?.narrate(kind === 'room' ? `nar_room_${id}` : kind === 'end' ? `nar_end_${id}` : `nar_${id}`);
     this.ui?.update(this);
   }
 
@@ -287,6 +313,7 @@ export class Game {
     magic.tickStatus(this, minutes);
     for (const m of this.party) {
       if (m.light === 'torch') {
+        if (m.torchLeft > 10 && m.torchLeft - minutes <= 10) this.bark(m, 'lowtorch');
         m.torchLeft -= minutes;
         if (m.torchLeft <= 0) { m.light = null; m.torchLeft = 0; this.say(`${m.def.name}'s torch gutters out.`); }
       } else if (m.light === 'lantern') {
@@ -306,6 +333,7 @@ export class Game {
     else return false;
     if (m.light === 'lantern') m.shut = false;
     m.light = 'torch';
+    this.sfx('torch_light', m);
     if (!quiet) this.say(`${m.def.name} lights a torch (${m.torches} left).`);
     return true;
   }
@@ -475,6 +503,7 @@ export class Game {
       if (path.length < plan.path.length) plan = { ...plan, path, door: -1, goal: path[path.length - 1] };
     }
     this.pending = { door: plan.door, goal: plan.goal, actor: this.mover };
+    if (plan.path.length > 4) this.bark(this.mover, 'move', 0.2);
     if (plan.door >= 0) this.focusDoor = plan.door;
     const solo = !!this.selected;
     const start = (m, tiles, wait) => {
@@ -554,8 +583,9 @@ export class Game {
     const r = inSix(this.rng, doorChance(m.def.str));
     this.advance(1);
     this.noise(i, 10); // forcing a stiff door is loud (PLAN.md 3.6)
-    if (!r.ok) { this.say(`${m.def.name} heaves at the ${name}, but it's stuck (${r.text}).`); return false; }
+    if (!r.ok) { this.sfx('door_stuck', i); this.say(`${m.def.name} heaves at the ${name}, but it's stuck (${r.text}).`); return false; }
     door.open = true;
+    this.sfx(this.dungeon.t[i] === T.GATE ? 'gate_open' : TILE[this.dungeon.t[i]].secret || this.dungeon.t[i] === T.BLOCK ? 'door_secret' : 'door_open', i);
     this.say(`${m.def.name} forces the ${name} open (${r.text}).`);
     this.doorsChanged();
     this.runScripts('opened', door);
@@ -564,6 +594,7 @@ export class Game {
   closeDoor(door) {
     if (this.memberAt(door.i)) return;
     door.open = false;
+    this.sfx('door_close', door.i);
     this.say(`The ${this.doorName(door)} is pulled shut.`);
     this.doorsChanged();
   }
@@ -572,6 +603,7 @@ export class Game {
     if (!r.ok) { this.advance(10); this.say(`Fennick works at the lock for a turn, without luck (${r.text}).`); this.ui.update(this); return; }
     this.advance(1);
     door.key = null;
+    this.sfx('lock_pick', door.i);
     this.say(`The lock clicks under Fennick's picks (${r.text}).`);
     this.tryOpen(door.i);
   }
@@ -581,6 +613,7 @@ export class Game {
     this.advance(1);
     door.key = null; door.open = true; door.smashed = true;
     this.noise(door.i, 16);
+    this.sfx('door_smash', door.i);
     this.say(`${m.def.name} smashes the lock off the ${this.doorName(door)}. The noise echoes down the passages.`);
     if (r.ok && !m.broken) { m.broken = true; this.say(`${m.def.name}'s weapon cracks in the blow (${r.text}).`); }
     this.doorsChanged();
@@ -593,6 +626,7 @@ export class Game {
   search() {
     const d = this.dungeon;
     this.advance(10);
+    this.sfx('search', this.leader);
     const near = this.hidden().filter((h) => {
       const [hx, hy] = d.xy(h.i);
       return this.party.some((m) => { const [x, y] = d.xy(m.tile); return Math.hypot(hx - x, hy - y) <= SEARCH_RADIUS; });
@@ -615,6 +649,7 @@ export class Game {
         this.say(`Under the bed, a lever is set into the floor (${r.text}).`);
       } else {
         h.door.found = true;
+        this.bark(this.party.find((m) => !m.dead && this.distTo(m.tile, h.i) <= SEARCH_RADIUS), 'secret');
         this.say(`A secret door! The outline of a hidden ${h.door.key === 'lever' ? 'panel' : 'door'} shows in the stonework (${r.text}).`);
       }
     }
@@ -634,6 +669,7 @@ export class Game {
     const door = [...this.dungeon.doors.values()].find((x) => x.lever >= 0);
     this.state.leverPulled = true;
     door.found = true; door.key = null; door.open = true;
+    this.sfx('lever', door.lever);
     this.say('The lever moves with a clunk, and a section of the north-west wall grinds open.');
     this.doorsChanged();
   }
@@ -737,6 +773,7 @@ export class Game {
   // and its number pops up as it stops. The result is already decided; this shows it.
   // kind: 'd20' or 'd6'; tint: its colour. Resolves when it has settled.
   rollDie(kind, value, [x0, z0], [x1, z1], tint = [0.85, 0.8, 0.68], dur = 0.75) {
+    this.sfx(kind === 'd20' ? 'dice_d20' : 'dice_d6', { x: x1, z: z1 });
     const die = { kind, value, x: x0, z: z0, y: 0.6, rx: 0, ry: 0, rz: 0, tint, life: 2.2,
       spin: [6 + Math.random() * 6, 5 + Math.random() * 6, 4 + Math.random() * 5] };
     this.dice.push(die);
@@ -813,6 +850,10 @@ export class Game {
     // a room script may bring others in first (Odric's dead, the gecko)
     this.runScripts('start', group);
     const what = this.foeList(this.activeFoes());
+    this.sfx('sting_encounter');
+    const cry = this.activeFoes()[0];
+    if (cry) this.sfx(`mon_${{ underpriest: 'priest', kithar: 'priest', odric: 'priest', archdeaconess: 'priest', skeleton: 'skeleton', lizardman: 'lizardman' }[cry.kind] || cry.kind}`, cry);
+    this.bark(this.leader, 'spotted', 0.7);
     this.say(`Encounter: ${what}!${ps && !fs ? ' The party is caught by surprise.' : ''}${fs && !ps ? ' They are taken by surprise.' : ''}`);
     this.ui.banner?.(`${what}${ps && !fs ? ' — surprised!' : fs && !ps ? ' — they are surprised' : ''}`);
     this.selected = null;
@@ -1089,6 +1130,8 @@ export class Game {
     if (p.helpless) r.hit = true;
     // the d20, rolled out from the attacker's side toward the target
     const mx = (a.x + t.x) / 2, mz = (a.z + t.z) / 2, sx = -(t.z - a.z), sz = t.x - a.x, sl = Math.hypot(sx, sz) || 1;
+    if (a.side === 'party') this.bark(a, 'attack', 0.3);
+    this.sfx(kind === 'missile' ? (/bow/.test(p.weapon.name) ? 'bow' : /sling/.test(p.weapon.name) ? 'sling' : 'throw') : 'swing', a);
     await this.rollDie('d20', r.roll, [a.x + sx / sl * 0.4, a.z + sz / sl * 0.4], [mx + sx / sl * 0.55, mz + sz / sl * 0.55], a.side === 'party' ? [0.86, 0.8, 0.66] : [0.62, 0.12, 0.08], a.side === 'party' ? 0.75 : 0.5);
     // a lunge toward the target (a short jab for missiles)
     const dx = (tx - ax) / (Math.hypot(tx - ax, ty - ay) || 1), dz = (ty - ay) / (Math.hypot(tx - ax, ty - ay) || 1);
@@ -1100,6 +1143,7 @@ export class Game {
     const whom = t.side === 'party' ? t.def.name : `the ${t.def.name.toLowerCase()}`;
     const text = `d20 ${r.roll}, needed ${p.need}`;
     if (!r.hit) {
+      this.sfx('miss', t);
       this.float(t, 'miss', 'miss');
       this.say(`${who} ${kind === 'missile' ? `shoots at ${whom}` : `attacks ${whom}`} and misses (${text}).`);
       this.ui.lastRoll?.({ ...p, roll: r });
@@ -1113,6 +1157,7 @@ export class Game {
     const how = kind === 'missile' ? `hits ${whom} with the ${p.weapon.name}` : `hits ${whom}${a.side !== 'party' && p.weapon.name !== 'attack' ? ` (${p.weapon.name})` : ''}`;
     this.say(`${who} ${how} for ${n} (${p.helpless ? 'helpless' : text}${p.backstab ? ', backstab x2' : ''}).`);
     this.ui.lastRoll?.({ ...p, roll: r, dmg: n });
+    this.sfx(t.def.ac <= 4 && t.def.rig !== 'rockman' ? 'clang' : /mace|club/.test(p.weapon.name) ? 'mace' : 'hit', t);
     this.hurt(t, n, a);
     if (t.side === 'party' && !t.dead) this.afflict(a, t, p.weapon);
   }
@@ -1122,17 +1167,20 @@ export class Game {
     this.float(u, `-${n}`, 'dmg');
     if (u.side === 'party') {
       if (u.downed) { u.dead = true; u.downed = 0; u.light = null; this.say(`${u.def.name} is killed.`); this.sightKey = ''; return; }
-      if (u.hp <= 0) { u.hp = 0; u.downed = DOWNED_ROUNDS; this.say(`${u.def.name} falls, bleeding.`); this.float(u, 'downed', 'kill'); this.runScripts('downed', u); }
+      if (u.hp <= 0) { u.hp = 0; u.downed = DOWNED_ROUNDS; this.bark(u, 'downed'); this.say(`${u.def.name} falls, bleeding.`); this.float(u, 'downed', 'kill'); this.runScripts('downed', u); }
       else if (by?.def.disease && u.maxHp > 1) {
         const s = save(this.rng, u.def.cls, 'poison');
         if (!s.ok && !u.diseased) { u.diseased = true; u.maxHp--; this.say(`The bite festers: ${u.def.name} is diseased, -1 max HP until rested (${s.text}).`); }
       }
+      if (u.hp > 0) this.bark(u, 'hurt', 0.4);
       return;
     }
     if (u.hp > 0) { if (u.status.asleep) { delete u.status.asleep; this.say(`The ${u.def.name.toLowerCase()} wakes with a howl.`); } return; }
     u.alive = false; u.dead = true; u.route = null;
     if (u.on) { delete u.on.status.slimed; u.on = null; }
     this.say(`${this.theName(u)} is slain.`);
+    this.sfx(u.kind === 'skeleton' ? 'mon_skeleton_die' : 'body_fall', u);
+    if (by?.side === 'party') this.bark(by, 'kill', 0.5);
     this.float(u, 'slain', 'kill');
     this.kills.push(u.def);
     this.runScripts('killed', u);
@@ -1180,6 +1228,7 @@ export class Game {
   // the end of the mission).
   petrify(m, s) {
     m.dead = true; m.petrified = true; m.downed = 0; m.light = null; m.route = null;
+    this.sfx('mon_rockman', m);
     this.say(`${m.def.name} turns to stone where they stand (${s.text})!`);
     this.float(m, 'stone', 'kill');
     this.sightKey = '';
@@ -1189,6 +1238,7 @@ export class Game {
     const d = this.dungeon, [fx, fy] = d.xy(f.tile), [tx, ty] = d.xy(t.tile);
     f.yaw = Math.atan2(-(tx - fx), ty - fy);
     f.spat = this.enc.round;
+    this.sfx('mon_spit', f);
     await this.tween(0.3, (k) => { const s = Math.sin(k * Math.PI) * 0.12; f.off = [Math.sin(-f.yaw) * -s, Math.cos(f.yaw) * s]; });
     f.off = [0, 0];
     this.sparkle(t.x, t.z, 'spit');
@@ -1202,6 +1252,7 @@ export class Game {
     this.camera.goal = [f.x, f.z];
     await this.tween(0.5, (k) => { f.off = [0, Math.sin(k * Math.PI) * 0.001]; });
     this.sparkle(target.x, target.z, spell === 'hold' ? 'charm' : 'cure');
+    this.sfx(spell === 'hold' ? 'spell_hold' : 'spell_cure', target);
     if (spell === 'hold') {
       // one person: the save is at -2 (B/X). Held, they are helpless for 1d4+2 rounds (a long
       // fight's worth; the book's 9 turns would end any fight on the spot)
@@ -1341,6 +1392,7 @@ export class Game {
   // at -2 to hit (and can't cast); a torch waved at it scatters it. The racket carries.
   startSwarm() {
     this.swarm = { rounds: 2 + die(this.rng, 4) + die(this.rng, 4) };
+    this.sfx('mon_bats');
     this.say('Leathery wings everywhere: a swarm of bats bursts from the roof of the tunnel!');
     this.ui.banner?.('Bats!');
     this.ui.bestiary?.(this);
@@ -1481,7 +1533,8 @@ export class Game {
       if (m.k >= n) { m.tile = m.route[n]; m.route = null; m.done?.(); m.done = null; }
       if (m.side !== 'party') continue;
       const room = d.roomOf(this.eyeOf(m));
-      if (room && !room.passage && !this.visited.has(room.id)) { this.visited.add(room.id); this.ui.viewKey = null; this.ui.update(this); }
+      if (room && (!room.passage || room.id === 'entrance' || room.id === 'temple') && !this.visited.has(room.id)) { this.visited.add(room.id); this.narrate(`room:${room.id}`); this.ui.viewKey = null; this.ui.update(this); }
+      if (m === clockKeeper && Math.floor(m.k) !== before) this.sfx(d.t[m.route?.[Math.floor(m.k)] ?? m.tile] === T.WATER ? 'splash' : 'step', m);
     }
     // close up, the camera (and so the cutaway) follows whoever is walking: the leader, or the
     // unit taking its turn

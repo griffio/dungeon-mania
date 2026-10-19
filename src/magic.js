@@ -77,6 +77,8 @@ export function resolve(g, m, id, i, scroll = g.casting?.scroll) {
   if (g.mode === 'encounter') m.acted = true; else g.advance(1);
   const [x, y] = d.xy(i);
   g.sparkle(x + 0.5, y + 0.5, id);
+  g.sfx({ missile: 'spell_missile', sleep: 'spell_sleep', light: 'spell_light', cure: 'spell_cure' }[id] || 'spell_cast', i);
+  g.bark(m, 'cast', 0.5);
   const name = m.def.name;
   switch (id) {
     case 'sleep': {
@@ -137,6 +139,8 @@ export function turn(g, m) {
   const undead = g.activeFoes().filter((f) => UNDEAD[f.kind] && g.foeShown(f));
   m.acted = true;
   const r = turnUndead(g.rng, 2, undead[0].kind);
+  g.sfx('spell_turn', m);
+  g.bark(m, 'turn');
   if (!r.ok) g.say(`${m.def.name} raises the holy symbol, but the ${undead[0].def.name.toLowerCase()}s come on (${r.text}).`);
   else {
     for (const f of undead.filter((x) => x.kind === undead[0].kind)) { f.state = 'fleeing'; f.status.turned = roll(g.rng, '2d6'); }
@@ -151,6 +155,7 @@ export function useItem(g, m, id) {
   const near = g.party.filter((a) => !a.dead && (a === m || g.inMelee(m.tile, a.tile)));
   const who = near.sort((a, b) => (b.downed ? 99 : b.maxHp - b.hp) - (a.downed ? 99 : a.maxHp - a.hp))[0];
   m.items[id]--;
+  g.sfx('potion', m);
   if (id === 'poolWater' && m.tainted) {
     const n = roll(g.rng, '1d6');
     who.hp = Math.max(0, who.hp - n);
