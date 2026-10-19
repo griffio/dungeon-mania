@@ -138,7 +138,7 @@ export function heal(g, a, n, why) {
 export function turn(g, m) {
   const undead = g.activeFoes().filter((f) => UNDEAD[f.kind] && g.foeShown(f));
   m.acted = true;
-  const r = turnUndead(g.rng, 2, undead[0].kind);
+  const r = turnUndead(g.rng, g.level || 2, undead[0].kind);
   g.sfx('spell_turn', m);
   g.bark(m, 'turn');
   if (!r.ok) g.say(`${m.def.name} raises the holy symbol, but the ${undead[0].def.name.toLowerCase()}s come on (${r.text}).`);
@@ -217,6 +217,7 @@ export function actions(g) {
   }
   const r = restOptions(g);
   if (r.breather && !g.busy) out.push({ id: 'breather', icon: '☕', label: 'Catch breath', hint: 'A turn: 1 HP each, once per room', ok: true, run: () => breather(g) });
+  if (r.camp) g.tip('camp');
   if (r.camp && !g.busy) out.push({ id: 'camp', icon: '⛺', label: 'Make camp', hint: 'An hour behind shut doors: spells back, 1d3 HP', ok: true, run: () => camp(g) });
   return out;
 }

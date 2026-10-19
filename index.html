@@ -188,6 +188,7 @@ button { font-family: var(--head); color: var(--parch); cursor: pointer; touch-a
 @media (max-width: 1100px) {
   #actions { left: calc(12px + var(--sa-l)); bottom: calc(150px + var(--sa-b)); justify-content: center; }
 }
+
 @media (max-height: 820px) {
   .card .hpt, .card .kit { display: none; }
 }
@@ -201,9 +202,50 @@ button { font-family: var(--head); color: var(--parch); cursor: pointer; touch-a
 .howbox td { padding: 3px 6px; border-top: 1px solid var(--line); vertical-align: top; }
 .howbox td:first-child { color: var(--dim); white-space: nowrap; }
 .howbox kbd { font-family: var(--mono); font-size: 13px; color: var(--parch); }
+/* the title and menus */
+#title { background: radial-gradient(ellipse at center, rgba(8,6,4,0.35), rgba(8,6,4,0.85)); }
+.titlebox { text-align: center; margin: 16px; }
+.titlebox h1 { font-family: var(--head); font-size: clamp(30px, 6vw, 58px); color: var(--parch); letter-spacing: 0.08em; margin: 0; text-shadow: 0 4px 18px #000, 0 0 3px #000; }
+.titlebox .sub { font-style: italic; color: var(--brass); font-size: 18px; margin: 6px 0 26px; text-shadow: 0 2px 6px #000; }
+.menu { display: flex; flex-direction: column; gap: 8px; align-items: center; }
+.menu button, .panelbox button.opt { min-width: 260px; min-height: 46px; padding: 8px 18px; background: var(--bg2); border: 1px solid var(--line); border-radius: 6px; font-size: 16px; letter-spacing: 0.08em; }
+.menu button:hover, .panelbox button.opt:hover { border-color: var(--brass); }
+.menu button span, .panelbox button.opt span { display: block; font-family: var(--text); font-size: 13px; font-style: italic; letter-spacing: 0; color: var(--dim); margin-top: 2px; }
+.menu button.main { border-color: var(--brass); }
+.panelbox { max-width: 520px; width: calc(100vw - 32px); max-height: calc(100vh - 32px); overflow-y: auto; }
+.panelbox .opts { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; }
+.panelbox button.opt { width: 100%; text-align: left; }
+.panelbox .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 0; border-top: 1px solid var(--line); font-size: 16px; }
+.panelbox .row small { display: block; color: var(--dim); font-size: 13px; font-style: italic; }
+.panelbox input[type=range] { width: 150px; accent-color: var(--brass); }
+.panelbox input[type=checkbox] { width: 22px; height: 22px; accent-color: var(--brass); }
+.panelbox .seg { display: flex; gap: 4px; }
+.panelbox .seg button { padding: 6px 10px; background: var(--bg); border: 1px solid var(--line); border-radius: 5px; font-size: 13px; }
+.panelbox .seg button.on { border-color: var(--brass); color: var(--brass); }
+.panelbox .foot { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+.panelbox .foot button { padding: 8px 16px; background: var(--bg); border: 1px solid var(--brass); border-radius: 6px; font-size: 14px; }
+/* a first-time tip */
+#tip { position: fixed; left: 50%; top: calc(70px + var(--sa-t)); transform: translateX(-50%); width: min(460px, calc(100vw - 24px)); padding: 10px 14px; display: none; z-index: 7; background: var(--bg2); border-color: var(--brass); }
+#tip.show { display: flex; gap: 12px; align-items: center; }
+#tip .tx { flex: 1; font-size: 15px; line-height: 1.35; }
+#tip button { padding: 6px 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 5px; font-size: 13px; }
+/* text size, and reduced motion */
+#hud, #dialogue, #bestiary, #tip, .screen .howbox, .titlebox { zoom: var(--ui, 1); }
+.calm *, .calm *::before { animation: none !important; transition: none !important; }
 #nogpu .why { color: var(--dim); font-family: var(--mono); font-size: 13px; margin-top: 10px; }
 #loading { font-family: var(--head); font-size: 20px; letter-spacing: 0.2em; }
 .big { margin-top: 12px; padding: 10px 22px; background: var(--bg); border: 1px solid var(--brass); border-radius: 6px; font-size: 16px; letter-spacing: 0.1em; }
+/* iPad and narrower: tighter camera buttons, and the round bar and hints clear the top row */
+@media (max-width: 1300px) {
+  #camctl { gap: 4px; padding: 4px; }
+  .icon-btn { width: 38px; height: 38px; font-size: 18px; }
+  #mapwrap { top: calc(60px + var(--sa-t)); }
+  #tip { top: calc(110px + var(--sa-t)); }
+}
+@media (max-width: 1000px) {
+  #roundbar { top: calc(64px + var(--sa-t)); left: calc(224px + var(--sa-l)); transform: none; min-width: 0; max-width: calc(100vw - 520px); }
+  #tip { top: auto; bottom: calc(240px + var(--sa-b)); left: calc(224px + var(--sa-l)); transform: none; width: calc(100vw - 236px); }
+}
 </style>
 </head>
 <body>
@@ -221,6 +263,7 @@ button { font-family: var(--head); color: var(--parch); cursor: pointer; touch-a
     <button id="party" class="icon-btn" aria-label="Go to the party">◉</button>
     <button id="viewbtn" class="icon-btn" aria-label="View options">👁</button>
     <button id="mute" class="icon-btn" aria-label="Sound on or off">🔊</button>
+    <button id="menubtn" class="icon-btn" aria-label="Menu: save, load, settings">☰</button>
     <button id="help" class="icon-btn" aria-label="How to play">?</button>
   </div>
   <div id="mapwrap" class="panel"><canvas id="automap"></canvas></div>
@@ -263,6 +306,14 @@ button { font-family: var(--head); color: var(--parch); cursor: pointer; touch-a
 <div id="nogpu" class="screen"><div class="howbox"><h2>WebGPU needed</h2><p>This game renders with WebGPU. On iPad use Safari on iPadOS 26 or later. On desktop use a current Chrome, Edge or Safari. WebGPU also needs a secure page: localhost or HTTPS.</p><div class="why"></div></div></div>
 <div id="lost" class="screen"><div class="howbox"><h2>Graphics reset</h2><p>The system reset the graphics device, which can happen after switching apps.</p><button id="reload" class="big">Reload</button></div></div>
 <div id="loading" class="screen show"><div class="msg">Lighting the torches…</div></div>
+<!-- the title, and the menus (menus.js) -->
+<div id="title" class="screen"><div class="titlebox">
+  <h1>The Shrine of Kollchap</h1>
+  <div class="sub">A Dungeons &amp; Dragons adventure, after the book of 1982</div>
+  <div class="menu" id="title-menu"></div>
+</div></div>
+<div id="panel" class="screen"><div class="howbox panelbox"></div></div>
+<div id="tip" class="panel"><div class="tx"></div><button>Got it</button></div>
 
 <script type="module" src="src/main.js"></script>
 </body>

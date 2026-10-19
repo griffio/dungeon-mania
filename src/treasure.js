@@ -242,6 +242,8 @@ export function actions(g) {
   }
   if (burdened(g)) out.push({ id: 'drop', icon: '⛀', label: `Leave the ${COIN_NAMES[Object.keys(COINS).find((k) => g.purse[k] > 0)]}`, hint: 'Lighten the load: the cheapest coins stay behind', ok: true, run: () => dropCheapest(g) });
   const c = activeChest(g);
+  if (c) g.tip('chest');
+  if (burdened(g)) g.tip('heavy');
   if (c) {
     const name = chestName(c), t = thiefBy(g, c);
     if (!c.opened) {

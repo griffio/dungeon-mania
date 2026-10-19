@@ -102,9 +102,18 @@ export class Audio {
   }
   has(id) { return this.ids.has(id); }
   resume() { if (this.ctx && this.ctx.state !== 'running') this.ctx.resume(); }
+  // The player's levels (settings.js): volume, voices, music.
+  setLevels({ volume = 0.9, voices = 1, music = 0.32 } = {}) {
+    this.levels = { volume, voices, music };
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    if (!this.muted) this.master.gain.setTargetAtTime(volume, t, 0.05);
+    for (const b of [this.voiceBus, this.speechBus, this.narratorBus, this.oracleBus]) b.gain.setTargetAtTime(voices, t, 0.05);
+    this.duck(!!this.speaking);
+  }
   setMuted(m) {
     this.muted = m;
-    if (this.master) this.master.gain.setTargetAtTime(m ? 0 : 0.9, this.ctx.currentTime, 0.05);
+    if (this.master) this.master.gain.setTargetAtTime(m ? 0 : this.levels?.volume ?? 0.9, this.ctx.currentTime, 0.05);
     for (const l of this.loops.values()) l.el.muted = m;
   }
 
@@ -164,7 +173,7 @@ export class Audio {
     src.onended = () => setTimeout(() => this.next(), 250);
   }
   // The music and ambience dip under a voice.
-  duck(on) { if (this.musicBus) this.musicBus.gain.setTargetAtTime(on ? 0.14 : 0.32, this.ctx.currentTime, 0.3); }
+  duck(on) { const m = this.levels?.music ?? 0.32; if (this.musicBus) this.musicBus.gain.setTargetAtTime(on ? m * 0.45 : m, this.ctx.currentTime, 0.3); }
   narrate(id) { this.speak(id, this.narratorBus); }
   // Whatever is said in quotes in this text: each line that has a recording, in turn, in its
   // speaker's voice (the oracle through the stone, the lizardman pitched down).

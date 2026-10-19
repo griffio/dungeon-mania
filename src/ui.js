@@ -4,6 +4,20 @@ import { TORCH_MINUTES, OIL_MINUTES, SPELLS, MONSTERS } from './defs.js';
 import { Automap } from './automap.js';
 import * as treasure from './treasure.js';
 import { hum } from './ending.js';
+import { save as saveSettings } from './settings.js';
+
+// First-time hints (PLAN.md 8: tutorial prompts), each shown once.
+const TIPS = {
+  fight: 'A fight! Each hero can move and act once a round, in any order. Tap a blue tile to move, or a foe to see the odds, then Attack. Space ends the round.',
+  door: 'Doors stick. Try again, or put the strongest at it. Forcing a door is noisy, and the dungeon hears.',
+  secret: 'See the torch flame lean? A hidden door is close by. Stop and Search.',
+  downed: 'A fallen hero bleeds for three rounds. Anyone beside them can Bandage, or Aldwin can cure them.',
+  torch: 'A torch burns for an hour. Light another before the dark comes: the dark is where the monsters see you first.',
+  heavy: 'Too much treasure: the party moves at half speed. Leave the cheapest coins behind.',
+  chest: 'Check a chest for traps before you open it. Fennick is best at it.',
+  camp: 'Shut every door of a cleared room and Make camp: an hour\'s rest brings the spells back.',
+  talk: 'Not everyone here wants a fight. Pick an answer, or press its number.',
+};
 
 const portrait = (id) => `assets/portraits/${id}.webp`;
 // The bestiary card's portrait for each kind, and a line on what to watch for.
@@ -25,7 +39,8 @@ const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls)
 // The exploration HUD (PLAN.md 7.6): clock, party cards, marching order, actions, the adventure
 // log, the automap, and room labels pinned to the map.
 export class UI {
-  constructor() {
+  constructor(prefs = { tips: false, tipsSeen: [] }) {
+    this.prefs = prefs;
     this.info = $('#info');
     this.labels = $('#labels');
     this.labelEls = [];
@@ -37,8 +52,24 @@ export class UI {
     this.seen = new Set();
   }
 
+  // A hint, the first time it applies.
+  tip(id) {
+    const p = this.prefs;
+    if (!this.playing || !p.tips || !TIPS[id] || p.tipsSeen.includes(id) || this.tipUp) return;
+    p.tipsSeen.push(id);
+    saveSettings(p);
+    const t = $('#tip');
+    t.querySelector('.tx').textContent = TIPS[id];
+    t.classList.add('show');
+    this.tipUp = true;
+    const done = () => { t.classList.remove('show'); this.tipUp = false; clearTimeout(this.tipTimer); };
+    t.querySelector('button').onclick = done;
+    this.tipTimer = setTimeout(done, 12000);
+  }
+
   // A bestiary card for the first kind of monster in this fight not met before.
   bestiary(g) {
+    if (!this.playing) return;
     const kinds = g.swarm ? ['bat'] : g.activeFoes().map((f) => f.kind);
     const kind = kinds.find((k) => !this.seen.has(k));
     if (!kind) return;

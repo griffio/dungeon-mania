@@ -21,6 +21,8 @@ import * as recruits from './recruits.js';
 import * as dialogue from './dialogue.js';
 import * as ending from './ending.js';
 import * as NARRATION from './narration.js';
+import * as wanderers from './wanderers.js';
+import { heroes, DIFFICULTIES, DEFAULTS } from './settings.js';
 import { MIN_DIST, MAX_DIST } from './input.js';
 
 const smoothstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
@@ -55,9 +57,15 @@ const ASIDE = new Set(['hidden', 'lurking', 'charmed', 'cowering', 'watching', '
 export { ASIDE };
 
 export class Game {
-  constructor({ ui, seed = (Math.random() * 1e9) | 0 }) {
+  // difficulty: 'story' | 'normal' | 'classic' (PLAN.md 3.8). prefs: the player's settings
+  // (settings.js); without them (the tests), the defaults with no wandering monsters.
+  constructor({ ui, seed = (Math.random() * 1e9) | 0, difficulty = 'normal', prefs = null }) {
     this.ui = ui;
+    this.seed = seed;
     this.rng = makeRng(seed);
+    this.difficulty = DIFFICULTIES[difficulty] ? difficulty : 'normal';
+    this.level = DIFFICULTIES[this.difficulty].level;
+    this.prefs = prefs || { ...DEFAULTS, wanderers: false, reduceMotion: false };
     this.camera = new Camera();
     this.view = { lowWalls: false, tintRooms: false, labels: true, secrets: false, mapLight: false };
     this.dyn = { box: new Instances(256), cyl: new Instances(128), sph: new Instances(128), cone: new Instances(16), ico: new Instances(8) };
@@ -84,18 +92,19 @@ export class Game {
 
     // the party, in marching order, front to back
     this.order = [...START_ORDER];
-    this.party = PARTY.map((def) => this.makeMember(def, d.idx(...this.data.PARTY_START[START_ORDER.indexOf(def.id)])));
+    this.party = heroes(this.difficulty, this.rng).map((def) => this.makeMember(def, d.idx(...this.data.PARTY_START[START_ORDER.indexOf(def.id)])));
     // what the party carries off: coins by kind, treasure items, keys, food; and the tally
     this.purse = { cp: 0, sp: 0, ep: 0, gp: 0, pp: 0 };
     this.treasure = [];
     this.keys = new Set();
-    this.rations = PARTY.reduce((n, def) => n + (def.kit.rations || 0), 0);
+    this.rations = this.party.reduce((n, m) => n + (m.def.kit.rations || 0), 0);
     this.kills = [];          // defs of the denizens slain, for the XP tally
     this.escort = null;       // freed prisoners following the party (one huddle)
     this.followers = [];      // who walks behind the party: the prisoners, a guided Arch-deaconess
     this.dialogue = null;     // someone talking, waiting for the party's answer
     this.roundsFought = 0;
     this.audio = null;        // set by main.js in the browser; every sound call is a no-op without it
+    this.autosave = null;     // set by main.js: called on entering a room and after each round (PLAN.md 7.7)
     // groups of denizens share morale and a room script
     this.groups = {};
     for (const L of Object.values(this.levels)) for (const f of L.foes) (this.groups[f.group] ||= { count: 0, deaths: 0, first: false, half: false }).count++;
@@ -285,6 +294,9 @@ export class Game {
     this.ui?.update(this);
   }
 
+  // A first-time hint (ui.js).
+  tip(id) { this.ui?.tip?.(id); }
+
   // ---------- sound (PLAN.md 8.1) ----------
   // A sound effect, at a unit or a tile (or everywhere).
   sfx(id, at) {
@@ -311,9 +323,10 @@ export class Game {
   advance(minutes) {
     this.clock += minutes;
     magic.tickStatus(this, minutes);
+    wanderers.tick(this, minutes);
     for (const m of this.party) {
       if (m.light === 'torch') {
-        if (m.torchLeft > 10 && m.torchLeft - minutes <= 10) this.bark(m, 'lowtorch');
+        if (m.torchLeft > 10 && m.torchLeft - minutes <= 10) { this.bark(m, 'lowtorch'); this.tip('torch'); }
         m.torchLeft -= minutes;
         if (m.torchLeft <= 0) { m.light = null; m.torchLeft = 0; this.say(`${m.def.name}'s torch gutters out.`); }
       } else if (m.light === 'lantern') {
@@ -583,7 +596,7 @@ export class Game {
     const r = inSix(this.rng, doorChance(m.def.str));
     this.advance(1);
     this.noise(i, 10); // forcing a stiff door is loud (PLAN.md 3.6)
-    if (!r.ok) { this.sfx('door_stuck', i); this.say(`${m.def.name} heaves at the ${name}, but it's stuck (${r.text}).`); return false; }
+    if (!r.ok) { this.sfx('door_stuck', i); this.tip('door'); this.say(`${m.def.name} heaves at the ${name}, but it's stuck (${r.text}).`); return false; }
     door.open = true;
     this.sfx(this.dungeon.t[i] === T.GATE ? 'gate_open' : TILE[this.dungeon.t[i]].secret || this.dungeon.t[i] === T.BLOCK ? 'door_secret' : 'door_open', i);
     this.say(`${m.def.name} forces the ${name} open (${r.text}).`);
@@ -773,6 +786,9 @@ export class Game {
   // and its number pops up as it stops. The result is already decided; this shows it.
   // kind: 'd20' or 'd6'; tint: its colour. Resolves when it has settled.
   rollDie(kind, value, [x0, z0], [x1, z1], tint = [0.85, 0.8, 0.68], dur = 0.75) {
+    // the dice can be turned off, or hurried for reduced motion: the number still shows
+    if (!this.prefs.showDice) { this.floats.push({ x: x1, z: z1, y: this.scene.floorH(this.dungeon.idx(Math.floor(x1), Math.floor(z1))) + 0.55, text: String(value), cls: `die ${kind}`, t: 0 }); return this.sleep(150); }
+    if (this.prefs.reduceMotion) dur *= 0.35;
     this.sfx(kind === 'd20' ? 'dice_d20' : 'dice_d6', { x: x1, z: z1 });
     const die = { kind, value, x: x0, z: z0, y: 0.6, rx: 0, ry: 0, rz: 0, tint, life: 2.2,
       spin: [6 + Math.random() * 6, 5 + Math.random() * 6, 4 + Math.random() * 5] };
@@ -789,6 +805,13 @@ export class Game {
     });
   }
   float(u, text, cls) { this.floats.push({ x: u.x, z: u.z, y: this.scene.floorH(u.tile) + 1.4, text, cls, t: 0 }); }
+
+  // A wandering monster takes a step (in exploration, as the clock runs: wanderers.js).
+  onWanderStep(f, a, b) {
+    const [x, y] = this.dungeon.xy(b);
+    f.tile = b; f.x = x + 0.5; f.z = y + 0.5; f.yaw = Math.atan2(-(b % this.dungeon.W - a % this.dungeon.W), ((b / this.dungeon.W) | 0) - ((a / this.dungeon.W) | 0));
+    traps.onEnter(this, f, a, b);
+  }
 
   // A denizen appears that wasn't there (the rat in the coffin).
   spawn(kind, i, group, hp, state = 'resting') {
@@ -854,6 +877,7 @@ export class Game {
     const cry = this.activeFoes()[0];
     if (cry) this.sfx(`mon_${{ underpriest: 'priest', kithar: 'priest', odric: 'priest', archdeaconess: 'priest', skeleton: 'skeleton', lizardman: 'lizardman' }[cry.kind] || cry.kind}`, cry);
     this.bark(this.leader, 'spotted', 0.7);
+    this.tip('fight');
     this.say(`Encounter: ${what}!${ps && !fs ? ' The party is caught by surprise.' : ''}${fs && !ps ? ' They are taken by surprise.' : ''}`);
     this.ui.banner?.(`${what}${ps && !fs ? ' — surprised!' : fs && !ps ? ' — they are surprised' : ''}`);
     this.selected = null;
@@ -879,8 +903,8 @@ export class Game {
       this.roundsFought++;
       for (const u of this.units) { u.moved = false; u.acted = false; u.moveMode = null; u.hits = null; }
       e.init = initiative(this.rng);
-      // zombies are slow: they always lose initiative (B/X)
-      if (this.activeFoes().length && this.activeFoes().every((f) => f.def.slow)) e.init.partyFirst = true;
+      // zombies are slow: they always lose initiative (B/X); a setting can give the party it always
+      if (this.prefs.partyFirst || (this.activeFoes().length && this.activeFoes().every((f) => f.def.slow))) e.init.partyFirst = true;
       const order = e.init.partyFirst ? ['party', 'foes'] : ['foes', 'party'];
       // the initiative dice: brass for the party, red for the foes
       if (this.activeFoes().length) {
@@ -902,10 +926,12 @@ export class Game {
       }
       if (this.mode !== 'encounter') return;
       this.endRound();
+      if (!this.encounterOver()) this.autosave?.();
       if (this.encounterOver()) { this.endEncounter(); return; }
     }
   }
-  encounterOver() { return !this.activeFoes().length && !this.swarm && !this.party.some((m) => m.downed && !m.dead) || !this.ableParty().length; }
+  // (someone bleeding keeps the rounds going, so they can be bandaged in time; not on Story)
+  encounterOver() { return !this.activeFoes().length && !this.swarm && !(this.difficulty !== 'story' && this.party.some((m) => m.downed && !m.dead)) || !this.ableParty().length; }
 
   partyPhase() {
     return new Promise((res) => {
@@ -983,7 +1009,7 @@ export class Game {
     }
     // the downed bleed (PLAN.md 3.4)
     for (const m of this.party) {
-      if (!m.downed || m.dead) continue;
+      if (!m.downed || m.dead || this.difficulty === 'story') continue;
       m.downed--;
       if (m.downed <= 0) { m.dead = true; m.light = null; this.say(`${m.def.name} dies.`); this.sightKey = ''; }
       else this.say(`${m.def.name} is bleeding: ${m.downed} round${m.downed === 1 ? '' : 's'} left to bandage them.`);
@@ -1002,6 +1028,8 @@ export class Game {
     this.mode = 'explore'; this.enc = null; this.selected = null; this.attackPlan = null;
     for (const m of this.party) { delete m.status.retching; delete m.status.held; }
     this.say('The fight is over.');
+    // Story: the fallen get up when it's over
+    if (this.difficulty === 'story') for (const m of this.party) if (m.downed && !m.dead) { m.downed = 0; m.hp = 1; this.say(`${m.def.name} staggers back up.`); }
     // what was shot or thrown can mostly be picked up again: daggers and sling stones, and half
     // the arrows (the rest break)
     let found = 0;
@@ -1166,8 +1194,11 @@ export class Game {
     u.hp -= n; u.flash = 1;
     this.float(u, `-${n}`, 'dmg');
     if (u.side === 'party') {
+      // Classic: 0 HP is death. Story: the downed aren't finished off
+      if (u.hp <= 0 && this.difficulty === 'classic') { u.hp = 0; u.dead = true; u.downed = 0; u.light = null; this.bark(u, 'downed'); this.say(`${u.def.name} falls, and does not get up.`); this.float(u, 'slain', 'kill'); this.sightKey = ''; return; }
+      if (u.downed && this.difficulty === 'story') { u.hp = 0; return; }
       if (u.downed) { u.dead = true; u.downed = 0; u.light = null; this.say(`${u.def.name} is killed.`); this.sightKey = ''; return; }
-      if (u.hp <= 0) { u.hp = 0; u.downed = DOWNED_ROUNDS; this.bark(u, 'downed'); this.say(`${u.def.name} falls, bleeding.`); this.float(u, 'downed', 'kill'); this.runScripts('downed', u); }
+      if (u.hp <= 0) { u.hp = 0; u.downed = DOWNED_ROUNDS; this.bark(u, 'downed'); this.tip('downed'); this.say(`${u.def.name} falls, bleeding.`); this.float(u, 'downed', 'kill'); this.runScripts('downed', u); }
       else if (by?.def.disease && u.maxHp > 1) {
         const s = save(this.rng, u.def.cls, 'poison');
         if (!s.ok && !u.diseased) { u.diseased = true; u.maxHp--; this.say(`The bite festers: ${u.def.name} is diseased, -1 max HP until rested (${s.text}).`); }
@@ -1534,7 +1565,7 @@ export class Game {
       if (m.k >= n) { m.tile = m.route[n]; m.route = null; m.done?.(); m.done = null; }
       if (m.side !== 'party') continue;
       const room = d.roomOf(this.eyeOf(m));
-      if (room && (!room.passage || room.id === 'entrance' || room.id === 'temple') && !this.visited.has(room.id)) { this.visited.add(room.id); this.narrate(`room:${room.id}`); this.ui.viewKey = null; this.ui.update(this); }
+      if (room && (!room.passage || room.id === 'entrance' || room.id === 'temple') && !this.visited.has(room.id)) { this.visited.add(room.id); this.narrate(`room:${room.id}`); this.ui.viewKey = null; this.ui.update(this); this.wantSave = true; }
       if (m === clockKeeper && Math.floor(m.k) !== before) this.sfx(d.t[m.route?.[Math.floor(m.k)] ?? m.tile] === T.WATER ? 'splash' : 'step', m);
     }
     // close up, the camera (and so the cutaway) follows whoever is walking: the leader, or the
@@ -1542,6 +1573,8 @@ export class Game {
     const walker = clockKeeper?.route ? clockKeeper : this.units.find((u) => u.route && (u.side === 'party' || this.foeShown(u)));
     if (walker && c.dist < CUT_MAX_DIST) c.goal = [walker.x, walker.z];
     if (wasBusy && !this.units.some((m) => m.route) && this.mode === 'explore') this.arrived();
+    // a new room reached: save once everyone has stopped
+    if (this.wantSave && !this.units.some((m) => m.route) && !this.dialogue) { this.wantSave = false; this.autosave?.(); }
     // someone downed outside a fight (a fall): count the rounds, so they can be bandaged in time
     if (this.mode === 'explore' && !this.units.some((m) => m.route) && this.party.some((m) => m.downed && !m.dead)) this.startRounds();
     const key = this.sightState();
@@ -1632,6 +1665,7 @@ export class Game {
       const h = this.scene.floorH(this.eyeOf(m)), lying = (m.dead && !m.petrified) || m.downed > 0 || !!m.status.stricken;
       const lit = m.light === 'lantern' ? (m.shut ? 'shut' : 'lantern') : m.light;
       const hint = lit === 'torch' ? this.hintAt(m.x, m.z) : null;
+      if (hint && hint[2] > 0.3 && this.mode === 'explore') this.tip('secret');
       m.flame = drawHero(this.dyn, m.def, {
         x: m.x + m.off[0], z: m.z + m.off[1], y: h, yaw: m.yaw, walk: m.walk, moving: m.moving, breath: hash2(m.def.str, m.def.dex) * 6,
         light: lit, lean: hint ? [hint[0] * hint[2], hint[1] * hint[2]] : null, flash: m.flash, lying, hidden: !!m.status.hidden || !!m.status.bolted,

@@ -9,6 +9,7 @@ export function talk(g, { who, name, text, options, input, wait }) {
   g.dialogue = { who, name, text, input, options: options?.length || input || wait ? options || [] : [{ label: 'Go on', run: () => {} }] };
   // the quoted words are spoken, if there is a recording of them
   g.audio?.sayQuotes(text);
+  if (options?.length > 1) g.tip('talk');
   g.ui.update(g);
 }
 

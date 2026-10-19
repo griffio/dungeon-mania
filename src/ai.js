@@ -97,7 +97,8 @@ function loop(g, foe, blocked) {
   foe.loopK = k;
   if (k === path.length - 1) {
     foe.loop = null;
-    if (foe.loopEnd) { const end = foe.loopEnd; foe.loopEnd = null; end(foe); return { route: k > start ? path.slice(start, k + 1) : null, target: null }; }
+    // a scripted run's end (Odric at his stairs): the room scripts take it from there
+    if (foe.loopEnd) { const end = foe.loopEnd; foe.loopEnd = null; g.runScripts('loopEnd', foe, end); return { route: k > start ? path.slice(start, k + 1) : null, target: null }; }
     foe.state = 'fighting';
     if (!g.scriptState.goblins?.back) { (g.scriptState.goblins ||= {}).back = true; g.say('Running feet behind you: the goblins are back, by the door you came in!'); }
   }

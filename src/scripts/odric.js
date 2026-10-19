@@ -47,12 +47,14 @@ export const ODRIC = {
       const stairs = d.links.find((l) => l.id === 'stairs-15');
       const p = stairs && d.pathTo(o.tile, stairs.a, { closed: true, pits: false });
       if (!p) { o.state = 'fighting'; return; }
-      o.state = 'looping'; o.loop = p.tiles; o.loopK = 0;
-      o.loopEnd = () => {
-        o.fled = true; o.state = 'escaped'; g.state.odric = 'escaped';
-        g.say('Odric\'s footsteps pound away up the stairs from the changing room, and a door slams far above. He is gone, and his keys with him.');
-      };
+      o.state = 'looping'; o.loop = p.tiles; o.loopK = 0; o.loopEnd = 'escape';
       g.say('"This is not finished!" Odric gathers up his robes and runs for the south-west door.');
+    },
+    // at the top of his stairs, he's gone
+    loopEnd(g, s, o, end) {
+      if (end !== 'escape' || o.kind !== 'odric') return;
+      o.fled = true; o.state = 'escaped'; g.state.odric = 'escaped';
+      g.say('Odric\'s footsteps pound away up the stairs from the changing room, and a door slams far above. He is gone, and his keys with him.');
     },
     killed(g, s, u) {
       if (u.kind === 'odric') { g.state.odric = 'killed'; g.say('Odric falls on his own circle. The ring of keys at his belt clinks on the stone.'); }
