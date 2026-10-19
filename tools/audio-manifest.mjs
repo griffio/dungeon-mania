@@ -170,7 +170,7 @@ export const SFX = [
   ['mus_explore', 'Dark fantasy dungeon ambient music drone: low sustained cello and deep male choir pad, slow and mysterious, no percussion, no melody', 30, true, 0.6],
   ['mus_combat', 'Tense dark fantasy battle music loop: driving low taiko drums, staccato cellos, urgent and grim, steady tempo', 30, true, 0.6],
   ['mus_boss', 'Ominous ritual chant music loop: deep chanting choir, heavy slow drums, dissonant low strings, sinister ceremony', 30, true, 0.6],
-  ['mus_surface', 'Gentle melancholy medieval evening music: solo lute and soft recorder over a quiet drone, slow', 30, true, 0.6],
+  ['mus_surface', 'Mystical quiet evening ambience: soft distant chiming bells and slow shimmering swirls of airy sound, sparse and hushed, fading away to near silence between phrases, no flute, no drums, no melody line', 30, true, 0.6],
   ['sting_victory', 'Short triumphant medieval fanfare: brass and timpani flourish, heroic, ends cleanly', 4, false, 0.7],
   ['sting_defeat', 'Short tragic orchestral sting: low strings fall and a deep drum, mournful, ends', 4, false, 0.7],
   ['sting_sword', 'Mystical revelation sting: shimmering choir swell, bright metallic ring, a magic sword awakens', 4, false, 0.7],
