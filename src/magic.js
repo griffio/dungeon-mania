@@ -6,17 +6,24 @@ const UNDEAD = { skeleton: 'skeleton', zombie: 'zombie', ghoul: 'ghoul' };
 
 // ---------- statuses ----------
 // Timed effects on a unit, in minutes of game time (a combat round is 1/6 of a minute):
-// asleep, slimed (rounds), shield, protection, lightSpell, and the flags hidden and charmed.
+// asleep, slimed (rounds), shield, protection, lightSpell, paralysed, held, poisoned (the death
+// needle's clock), and the flags hidden, charmed, sick, retching and stricken.
+const TIMED = ['asleep', 'shield', 'protection', 'lightSpell', 'paralysed', 'held', 'poisoned'];
 export function tickStatus(g, minutes) {
   for (const u of g.units) {
     const s = u.status;
-    for (const k of ['asleep', 'shield', 'protection', 'lightSpell']) {
+    if (u.dead) continue;
+    for (const k of TIMED) {
       if (!s[k]) continue;
       s[k] = Math.max(0, s[k] - minutes);
       if (s[k] > 0) continue;
       delete s[k];
-      if (k === 'asleep' && u.alive) g.say(`The ${u.def.name.toLowerCase()} wakes up.`);
+      if (k === 'asleep' && u.alive) g.say(`${g.theName(u)} wakes up.`);
       if (k === 'lightSpell') { g.say(`The magical light round ${u.def.name} fades.`); g.sightKey = ''; }
+      if (k === 'paralysed' || k === 'held') g.say(`${g.theName(u)} can move again.`);
+      // the death needle: uncured, the poison wins. On Normal the victim lives, but is helpless
+      // for the rest of the mission and has to be carried (PLAN.md 6.3)
+      if (k === 'poisoned') { s.stricken = true; g.say(`The poison has run its course: ${u.def.name} collapses, helpless, and must be carried from here on.`); }
     }
   }
   if (g.detectEvil && g.clock > g.detectEvil) { g.detectEvil = 0; g.say('The sense of evil fades.'); }
@@ -25,15 +32,16 @@ export function tickStatus(g, minutes) {
 // ---------- casting ----------
 // The spells a hero can cast now: memorised and not yet used. No casting in the bat swarm.
 export function castable(g, m) {
-  if (!m.def.spells || m.dead || m.downed || g.swarm) return [];
+  if (!m.def.spells || !g.canAct(m) || g.swarm) return [];
   return [...new Set(m.memorised)].filter((id) => id !== 'readMagic');
 }
 
-// Start casting: spells on yourself happen at once; the rest wait for a target tap.
-export function beginCast(g, m, id) {
+// Start casting: spells on yourself happen at once; the rest wait for a target tap. scroll: the
+// item it's read from, instead of the memory.
+export function beginCast(g, m, id, scroll = null) {
   const sp = SPELLS[id];
-  if (sp.target === 'self') { resolve(g, m, id, m.tile); return; }
-  g.casting = { caster: m, spell: id };
+  if (sp.target === 'self') { resolve(g, m, id, m.tile, scroll); return; }
+  g.casting = { caster: m, spell: id, scroll };
   g.attackPlan = null;
   g.say(`${m.def.name} begins to cast ${sp.name}: choose ${sp.target === 'foe' ? 'a foe' : sp.target === 'area' ? 'where' : 'a companion beside them'}.`);
   g.ui.update(g);
@@ -60,11 +68,12 @@ export function targetProblem(g, i) {
   return null;
 }
 
-// Cast the spell: it's gone from memory whatever happens.
-export function resolve(g, m, id, i) {
+// Cast the spell: it's gone from memory (or the scroll crumbles) whatever happens.
+export function resolve(g, m, id, i, scroll = g.casting?.scroll) {
   const sp = SPELLS[id], d = g.dungeon;
   g.casting = null;
-  m.memorised.splice(m.memorised.indexOf(id), 1);
+  if (scroll) m.items[scroll]--;
+  else m.memorised.splice(m.memorised.indexOf(id), 1);
   if (g.mode === 'encounter') m.acted = true; else g.advance(1);
   const [x, y] = d.xy(i);
   g.sparkle(x + 0.5, y + 0.5, id);
@@ -92,7 +101,7 @@ export function resolve(g, m, id, i) {
       break;
     }
     case 'shield': m.status.shield = sp.rounds / 6; g.say(`${name} casts Shield: the air hardens round them.`); break;
-    case 'protection': m.status.protection = sp.rounds / 6; g.say(`${name} casts Protection from Evil.`); break;
+    case 'protection': m.status.protection = sp.rounds / 6; g.say(`${name} ${scroll ? 'reads a scroll of' : 'casts'} Protection from Evil.`); break;
     case 'charm': {
       const f = g.foeAt(i), s = save(g.rng, f.def.save, 'spells');
       if (s.ok) g.say(`${name} casts Charm Person, but the ${f.def.name.toLowerCase()} shrugs it off (${s.text}).`);
@@ -101,7 +110,7 @@ export function resolve(g, m, id, i) {
     }
     case 'cure': {
       const a = g.party.find((p) => p.tile === i), n = roll(g.rng, '1d6+1');
-      heal(g, a, n, `${name} casts Cure Light Wounds on ${a === m ? 'themself' : a.def.name}`);
+      heal(g, a, n, `${name} ${scroll ? 'reads a scroll of' : 'casts'} Cure Light Wounds on ${a === m ? 'themself' : a.def.name}`);
       break;
     }
     case 'detectEvil': g.detectEvil = g.clock + sp.minutes; g.say(`${name} casts Detect Evil: evil things within 120 ft glow red to their sight.`); break;
@@ -115,7 +124,10 @@ export function heal(g, a, n, why) {
   const was = a.hp;
   a.hp = Math.min(a.maxHp, a.hp + n);
   if (a.downed) a.downed = 0;
-  delete a.status.paralysed;
+  // the cure also frees the paralysed and halts the death needle's poison (B/X)
+  if (a.status.paralysed) g.say(`${a.def.name} can move again.`);
+  if (a.status.poisoned) g.say(`The poison in ${a.def.name}'s veins is driven out.`);
+  delete a.status.paralysed; delete a.status.poisoned;
   g.float(a, `+${a.hp - was}`, 'heal');
   g.say(`${why}: ${a.def.name} is healed ${a.hp - was} (${a.hp}/${a.maxHp}).`);
 }
@@ -170,6 +182,7 @@ export function camp(g) {
   for (const m of g.party) {
     if (m.dead) continue;
     if (m.diseased) { m.diseased = false; m.maxHp++; }
+    delete m.status.sick;
     const n = roll(g.rng, '1d3');
     m.hp = Math.min(m.maxHp, m.hp + n);
     if (m.def.spells) m.memorised = [...m.def.spells.memorised];
@@ -181,7 +194,7 @@ export function camp(g) {
 export function actions(g) {
   const out = [], m = g.selected && g.member(g.selected);
   const enc = g.mode === 'encounter', mine = enc ? g.enc?.phase === 'party' && !g.busy : !g.busy;
-  if (m && mine && !(enc && m.acted)) {
+  if (m && mine && g.canAct(m) && !(enc && m.acted)) {
     for (const id of castable(g, m)) {
       const sp = SPELLS[id], n = m.memorised.filter((x) => x === id).length;
       out.push({ id: `cast:${id}`, icon: sp.icon, label: `Cast ${sp.name}`, hint: sp.hint + (n > 1 ? ` (${n} memorised)` : ''), ok: true, run: () => beginCast(g, m, id) });
@@ -190,7 +203,11 @@ export function actions(g) {
       out.push({ id: 'turn', icon: '✝', label: 'Turn Undead', hint: 'The holy symbol: undead flee', ok: true, run: () => turn(g, m) });
     }
     for (const id of Object.keys(ITEMS)) {
-      if (m.items[id] > 0) out.push({ id: `use:${id}`, icon: ITEMS[id].icon, label: `${ITEMS[id].name} (${m.items[id]})`, hint: 'For whoever beside them needs it most', ok: true, run: () => useItem(g, m, id) });
+      if (!(m.items[id] > 0)) continue;
+      const it = ITEMS[id];
+      // scrolls: the cleric reads them as the spell
+      if (it.spell) { if (m.def.cls === 'Cleric') out.push({ id: `read:${id}`, icon: it.icon, label: `Read ${SPELLS[it.spell].name} (${m.items[id]})`, hint: `From the scroll: ${SPELLS[it.spell].hint}`, ok: true, run: () => beginCast(g, m, it.spell, id) }); continue; }
+      out.push({ id: `use:${id}`, icon: it.icon, label: `${it.name} (${m.items[id]})`, hint: 'For whoever beside them needs it most', ok: true, run: () => useItem(g, m, id) });
     }
   }
   const r = restOptions(g);

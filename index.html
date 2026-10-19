@@ -51,12 +51,16 @@ button { font-family: var(--head); color: var(--parch); cursor: pointer; touch-a
 #hud { position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity 0.6s; }
 #hud.show { opacity: 1; }
 .panel { background: var(--bg); border: 1px solid var(--line); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); border-radius: 6px; pointer-events: auto; }
-.c-brannoc { --c: #c0503c; } .c-ysolde { --c: #5b7fd6; } .c-aldwin { --c: #e6dcc4; } .c-fennick { --c: #6f9a55; }
-#clock { position: absolute; top: calc(10px + var(--sa-t)); left: calc(12px + var(--sa-l)); width: 200px; padding: 6px 12px; }
+.c-brannoc { --c: #c0503c; } .c-ysolde { --c: #5b7fd6; } .c-aldwin { --c: #e6dcc4; } .c-fennick { --c: #6f9a55; } .c-belisarius { --c: #a08a5a; } .c-rosa { --c: #d98c3a; }
+#clock { width: 200px; padding: 6px 12px; }
 #clock .turn { font-family: var(--head); font-size: 19px; color: var(--brass); letter-spacing: 0.06em; }
 #clock .turn span { font-family: var(--text); font-size: 15px; color: var(--dim); margin-left: 6px; }
 #clock .where { font-size: 15px; font-style: italic; color: var(--parch); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#leftcol { position: absolute; top: calc(76px + var(--sa-t)); left: calc(12px + var(--sa-l)); width: 200px; display: flex; flex-direction: column; gap: 6px; }
+#clock .goal { font-size: 13px; color: var(--brass); margin-top: 2px; }
+#clock .purse { font-size: 13px; color: var(--dim); margin-top: 1px; }
+#clock .purse em { color: var(--bad); font-style: normal; }
+#clock .hum { font-size: 13px; color: #9cbcff; margin-top: 1px; animation: pulse 0.6s ease-in-out infinite alternate; }
+#leftcol { position: absolute; top: calc(10px + var(--sa-t)); left: calc(12px + var(--sa-l)); width: 200px; display: flex; flex-direction: column; gap: 6px;  max-height: calc(100vh - 190px - var(--sa-t) - var(--sa-b)); overflow-y: auto; scrollbar-width: none; pointer-events: auto; }
 #cards { display: flex; flex-direction: column; gap: 6px; pointer-events: auto; }
 .card { position: relative; text-align: left; padding: 6px 10px 6px 14px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; font-family: var(--text); line-height: 1.15; }
 .card::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--c); border-radius: 6px 0 0 6px; }
@@ -68,6 +72,10 @@ button { font-family: var(--head); color: var(--parch); cursor: pointer; touch-a
 .card .hp b { display: block; height: 100%; background: #8f3b2c; }
 .card .burn b { display: block; height: 100%; background: linear-gradient(90deg, #a24a14, #f0a53a); }
 .card .hpt, .card .kit { font-size: 12px; color: var(--dim); margin-top: 1px; }
+.card { padding-left: 52px !important; }
+.card img.pt { position: absolute; left: 10px; top: 7px; width: 36px; height: 36px; border-radius: 4px; border: 1px solid var(--line); object-fit: cover; }
+.card.dead img.pt { filter: grayscale(1) brightness(0.6); }
+.chips .bad { color: #ff9a7a; border-color: #8a3a2a; background: rgba(120,30,20,0.25); } .chips .stone { color: #c8c4bc; border-color: #77736c; }
 .card .chips { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 3px; }
 .card .chips b { font: 11px var(--mono); font-weight: normal; padding: 0 4px; border-radius: 3px; border: 1px solid; }
 .chips .slime { color: #9be36b; border-color: #4f8a2a; background: rgba(60,120,20,0.25); animation: pulse 1s ease-in-out infinite alternate; }
@@ -143,6 +151,32 @@ button { font-family: var(--head); color: var(--parch); cursor: pointer; touch-a
 .float.die.d6 { font-size: 24px; color: #f0c27a; }
 .float.dmg { color: #ff9a5a; }
 .float.heal { color: #8fe08a; font-size: 22px; } .float.zz { color: #c9d4ff; font-size: 16px; font-style: italic; } .float.miss { color: #b5a990; font-size: 17px; } .float.kill { color: #ff4d3d; font-size: 18px; }
+/* someone talking (PLAN.md 7.6: portrait, line, answers) */
+#dialogue { position: fixed; left: 50%; bottom: calc(16px + var(--sa-b)); transform: translateX(-50%); width: min(720px, calc(100vw - 24px)); padding: 14px 16px; display: none; gap: 14px; z-index: 8; background: var(--bg2); }
+#dialogue.show { display: flex; }
+#dialogue img { width: 132px; height: 132px; border-radius: 6px; border: 1px solid var(--line); object-fit: cover; flex: none; }
+#dialogue img.none { display: none; }
+#dialogue .nm { font-family: var(--head); color: var(--brass); font-size: 17px; letter-spacing: 0.05em; }
+#dialogue .tx { font-size: 18px; line-height: 1.4; margin: 6px 0 10px; white-space: pre-line; }
+#dialogue .opts { display: flex; flex-direction: column; gap: 5px; }
+#dialogue .opts button { text-align: left; font-family: var(--text); font-size: 16px; padding: 6px 10px; background: var(--bg); border: 1px solid var(--line); border-radius: 5px; }
+#dialogue .opts button i { font-style: normal; font-family: var(--mono); font-size: 12px; color: var(--dim); margin-right: 8px; }
+#dialogue .opts button span { color: var(--dim); font-size: 13px; margin-left: 6px; font-style: italic; }
+#dialogue .opts button.dis { opacity: 0.4; }
+/* a bestiary card, the first time a kind of monster is met */
+#bestiary { position: fixed; right: calc(12px + var(--sa-r)); top: calc(250px + var(--sa-t)); width: 230px; padding: 8px; display: none; z-index: 7; background: var(--bg2); }
+#bestiary.show { display: block; animation: cardin 0.4s ease-out; }
+#bestiary img { width: 100%; aspect-ratio: 1; border-radius: 4px; display: block; }
+#bestiary .nm { font-family: var(--head); color: var(--parch); font-size: 16px; margin-top: 6px; }
+#bestiary .st { font-family: var(--mono); font-size: 11px; color: var(--dim); margin-top: 2px; }
+#bestiary .nt { font-size: 14px; color: var(--parch); margin-top: 4px; font-style: italic; }
+@keyframes cardin { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: none; } }
+/* the tally */
+#end .howbox { max-width: 600px; }
+#end .res h2 { font-size: 24px; }
+#end .res p { font-style: italic; }
+#end table td:last-child { text-align: right; color: var(--parch); }
+#end .xp { font-family: var(--head); color: var(--brass); font-size: 18px; margin-top: 10px; }
 #banner { position: fixed; top: 22%; left: 50%; transform: translateX(-50%); font-family: var(--head); font-size: 34px; color: var(--parch); letter-spacing: 0.1em;
   text-shadow: 0 3px 12px #000, 0 0 3px #000; pointer-events: none; opacity: 0; white-space: nowrap; }
 #banner.show { animation: bannerin 2.6s ease-out forwards; }
@@ -174,8 +208,7 @@ button { font-family: var(--head); color: var(--parch); cursor: pointer; touch-a
 <div id="labels"></div>
 
 <div id="hud">
-  <div id="clock" class="panel"></div>
-  <div id="leftcol"><div id="cards"></div><div id="order" class="panel"></div></div>
+  <div id="leftcol"><div id="clock" class="panel"></div><div id="cards"></div><div id="order" class="panel"></div></div>
   <div id="camctl" class="panel">
     <button id="rotl" class="icon-btn" aria-label="Rotate view left">↺</button>
     <button id="north" class="icon-btn" aria-label="Face north">N</button>
@@ -201,6 +234,8 @@ button { font-family: var(--head); color: var(--parch); cursor: pointer; touch-a
 </div>
 <div id="floats"></div>
 <div id="banner"></div>
+<div id="dialogue" class="panel"><img alt=""><div class="body"><div class="nm"></div><div class="tx"></div><div class="opts"></div></div></div>
+<div id="bestiary" class="panel"></div>
 <div id="end" class="screen"><div class="howbox"><div class="res"></div><button id="restart" class="big">Begin again</button></div></div>
 
 <div id="howto" class="screen"><div class="howbox">
@@ -213,6 +248,8 @@ button { font-family: var(--head); color: var(--parch); cursor: pointer; touch-a
     <tr><td>Time</td><td>Every 120 ft walked is a 10-minute turn. A torch lasts 6 turns; light another before the dark comes. Ysolde's lantern can be hooded to hide the party.</td></tr>
     <tr><td>Order</td><td>Tap two names in the marching order to swap them. Number <kbd>1</kbd> leads.</td></tr>
     <tr><td>Actions</td><td>The buttons along the bottom, or number keys <kbd>1</kbd>–<kbd>9</kbd>.</td></tr>
+    <tr><td>People</td><td>Some of Kollchap's people would rather talk first. Pick an answer, or press its number.</td></tr>
+    <tr><td>Treasure</td><td>Search the bodies, open chests (check them for needles first), search cleared rooms. Coins weigh: carry too much and the party moves at half speed.</td></tr>
     <tr><td>Camera</td><td>Drag to pan, pinch or wheel to zoom, twist or <kbd>Q</kbd>/<kbd>E</kbd> to turn. Tap the map to look there. ◉ finds the party, ⤢ shows it all.</td></tr>
     <tr><td>View</td><td>👁 for low walls <kbd>H</kbd>, room tint <kbd>R</kbd>, labels <kbd>L</kbd>, map light <kbd>M</kbd> (lifts the fog) and show secrets <kbd>X</kbd>: viewing aids, not part of play.</td></tr>
   </table>

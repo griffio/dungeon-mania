@@ -22,6 +22,7 @@ const bridged = (g, i) => bridgeTiles(g).includes(i);
 export function onEnter(g, u, a, b) {
   const d = g.dungeon;
   const [ax, ay] = d.xy(a), [bx, by] = d.xy(b);
+  if (u.side === 'escort') return;
   if (u.side !== 'party') {
     // a denizen opens a closed door it walks through
     const door = d.doors.get(b);
@@ -46,6 +47,16 @@ export function onEnter(g, u, a, b) {
     fall(g, u, 10);
     g.haltParty(u, b);
     return;
+  }
+  // room 23's wet stairs: a DEX check going down, or slip and fall for 1d3 (PLAN.md 6.3)
+  if (d.t[b] === T.STAIRS && d.t[a] !== T.STAIRS && d.roomOf(b)?.id === '23') {
+    const r = die(g.rng, 20);
+    if (r > u.def.dex) {
+      const n = die(g.rng, 3);
+      u.hp -= n; u.flash = 1; g.float(u, `-${n}`, 'dmg');
+      g.say(`${u.def.name} slips on the wet stairs and tumbles down them, for ${n} (d20 ${r} against DEX ${u.def.dex}).`);
+      if (u.hp <= 0) { u.hp = 0; if (!u.downed) u.downed = 3; }
+    }
   }
   // crossing a pit is one climb, down and up again: the check comes on the way out (unless a
   // rope bridge spans it)

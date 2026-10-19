@@ -6,16 +6,20 @@ import * as DUNGEON from './dungeon-data.js';
 import * as SURFACE from './surface-data.js';
 import { LIGHT_KINDS, PARTY, START_ORDER, START_LIGHTS, TORCH_MINUTES, OIL_MINUTES, MONSTERS } from './defs.js';
 import {
-  die, inSix, percent, doorChance, searchChance, minutesFor, SMASH_BREAK, mod,
+  die, roll, inSix, percent, doorChance, searchChance, minutesFor, SMASH_BREAK, mod,
   hitBase, attackRoll, hitChance, damage, moraleCheck, surprise, initiative, save, rangeMod,
 } from './rules.js';
 import { groupTargets } from './party.js';
-import { drawHero, drawRat, drawSlime } from './models.js';
+import { drawHero, drawRat, drawSlime, drawSkeleton, drawRockman, drawLizard, drawCentipede, drawLocust } from './models.js';
 import { foeTurn, canSee } from './ai.js';
 import { SCRIPTS } from './scripts/rooms.js';
 import * as magic from './magic.js';
 import * as skills from './skills.js';
 import * as traps from './traps.js';
+import * as treasure from './treasure.js';
+import * as recruits from './recruits.js';
+import * as dialogue from './dialogue.js';
+import * as ending from './ending.js';
 import { MIN_DIST, MAX_DIST } from './input.js';
 
 const smoothstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
@@ -42,10 +46,12 @@ const DOWNED_ROUNDS = 3; // a downed hero dies at the end of their third round u
 const LEVELS = { surface: SURFACE, dungeon: DUNGEON };
 // What each level keeps for itself; the game reads them through accessors on the current level.
 const PER_LEVEL = ['data', 'dungeon', 'scene', 'lit', 'visible', 'explored', 'sightTmp', 'fogCur', 'fog', 'walls', 'fixedLit',
-  'shafts', 'staticDecals', 'foes', 'traps', 'fogVersion', 'exploredVersion', 'wallsVersion', 'staticDecalsVersion'];
+  'shafts', 'staticDecals', 'foes', 'traps', 'chests', 'cells', 'caches', 'fogVersion', 'exploredVersion', 'wallsVersion', 'staticDecalsVersion'];
 // Foes in these states aren't part of a fight: hidden in rubbish, waiting on a wall, charmed,
-// cowering, or watching without interest.
-const ASIDE = new Set(['hidden', 'lurking', 'charmed', 'cowering', 'watching']);
+// cowering, watching without interest, talking, off searching rubble, guarding without a quarrel,
+// held captive, surrendered (or bound), or walking with the party.
+const ASIDE = new Set(['hidden', 'lurking', 'charmed', 'cowering', 'watching', 'parley', 'searching', 'guarding', 'captive', 'surrendered', 'bound', 'ally']);
+export { ASIDE };
 
 export class Game {
   constructor({ ui, seed = (Math.random() * 1e9) | 0 }) {
@@ -62,7 +68,8 @@ export class Game {
     this.clock = 0; // minutes since the party reached the temple
     this.log = [];
     this.searches = new Map(); // door (or 'lever') -> searches made for it
-    this.state = { casesMoved: false, leverFound: false, leverPulled: false, rope: false, bridge: false };
+    this.state = { casesMoved: false, leverFound: false, leverPulled: false, rope: false, bridge: false, urns: DUNGEON.URNS.count, robes: false };
+    this.piles = [];          // heaps of coins too heavy to just scoop up
     this.rested = new Set();  // rooms the party has caught its breath in
     this.probing = false;     // walking with the 10' pole out in front
     this.casting = null;      // a spell waiting for its target
@@ -76,20 +83,17 @@ export class Game {
 
     // the party, in marching order, front to back
     this.order = [...START_ORDER];
-    this.party = PARTY.map((def) => {
-      const [x, y] = this.data.PARTY_START[START_ORDER.indexOf(def.id)];
-      return {
-        def, id: def.id, tile: d.idx(x, y), x: x + 0.5, z: y + 0.5, yaw: Math.PI / 2, // facing west, into the dungeon
-        route: null, k: 0, wait: 0, walk: 0, moving: 0,
-        light: null, torchLeft: 0, torches: def.kit.torches, stub: 0,
-        oil: def.kit.lantern ? OIL_MINUTES : 0, flasks: def.kit.oil || 0, shut: false, broken: false, flame: null,
-      };
-    });
-    for (const m of this.party) {
-      Object.assign(m, { side: 'party', hp: m.def.hp, maxHp: m.def.hp, downed: 0, dead: false, moved: false, acted: false,
-        ammo: m.def.missile.ammo, flash: 0, off: [0, 0], diseased: false, status: {},
-        memorised: [...(m.def.spells?.memorised || [])], items: { potion: m.def.kit.potions || 0, poolWater: 0 }, empty: m.def.kit.flasks || 0 });
-    }
+    this.party = PARTY.map((def) => this.makeMember(def, d.idx(...this.data.PARTY_START[START_ORDER.indexOf(def.id)])));
+    // what the party carries off: coins by kind, treasure items, keys, food; and the tally
+    this.purse = { cp: 0, sp: 0, ep: 0, gp: 0, pp: 0 };
+    this.treasure = [];
+    this.keys = new Set();
+    this.rations = PARTY.reduce((n, def) => n + (def.kit.rations || 0), 0);
+    this.kills = [];          // defs of the denizens slain, for the XP tally
+    this.escort = null;       // freed prisoners following the party (one huddle)
+    this.followers = [];      // who walks behind the party: the prisoners, a guided Arch-deaconess
+    this.dialogue = null;     // someone talking, waiting for the party's answer
+    this.roundsFought = 0;
     // groups of denizens share morale and a room script
     this.groups = {};
     for (const L of Object.values(this.levels)) for (const f of L.foes) (this.groups[f.group] ||= { count: 0, deaths: 0, first: false, half: false }).count++;
@@ -105,6 +109,20 @@ export class Game {
     this.focusParty(true);
   }
 
+  // A party member, standing on tile i: a hero, or a recruit who has just joined.
+  makeMember(def, i) {
+    const [x, y] = this.dungeon.xy(i);
+    return {
+      def, id: def.id, tile: i, x: x + 0.5, z: y + 0.5, yaw: Math.PI / 2, // facing west, into the dungeon
+      route: null, k: 0, wait: 0, walk: 0, moving: 0,
+      light: null, torchLeft: 0, torches: def.kit.torches, stub: 0,
+      oil: def.kit.lantern ? OIL_MINUTES : 0, flasks: def.kit.oil || 0, shut: false, broken: false, flame: null,
+      side: 'party', hp: def.hp, maxHp: def.hp, downed: 0, dead: false, moved: false, acted: false,
+      ammo: def.missile.ammo, flash: 0, off: [0, 0], diseased: false, status: {},
+      memorised: [...(def.spells?.memorised || [])], items: { potion: def.kit.potions || 0, poolWater: 0, scrollCure: 0, scrollProtection: 0 }, empty: def.kit.flasks || 0,
+    };
+  }
+
   // A level: its map, scene, fog of war and denizens.
   makeLevel(id, data) {
     const d = new Dungeon(data), n = d.n, prev = this.L;
@@ -114,12 +132,16 @@ export class Game {
       fogCur: new Float32Array(n * 2), fog: new Uint8Array(n * 4), fogVersion: 0, exploredVersion: 0, wallsVersion: 0, staticDecalsVersion: 0,
       shafts: new Instances(4),
       foes: (data.FOES || []).map((f, k) => ({
-        id: `${id}-${f.kind}${k}`, def: MONSTERS[f.kind], kind: f.kind, side: 'foe', group: f.group, guard: !!f.guard,
+        id: `${id}-${f.kind}${k}`, def: f.name ? { ...MONSTERS[f.kind], name: f.name, proper: true } : MONSTERS[f.kind], kind: f.kind, side: 'foe', group: f.group, guard: !!f.guard,
+        loot: f.loot ? structuredClone(f.loot) : null,
         home: d.idx(...f.at), tile: d.idx(...f.at), x: f.at[0] + 0.5, z: f.at[1] + 0.5, yaw: hash2(f.at[0], f.at[1]) * Math.PI * 2,
         hp: f.hp, maxHp: f.hp, state: f.state, alive: true, dead: false, fled: false, status: {}, spotted: false, on: null,
         route: null, k: 0, wait: 0, walk: 0, moving: 0, flash: 0, off: [0, 0], moved: false, acted: false,
       })),
       traps: (data.TRAPS || []).map((t) => ({ ...t, i: d.idx(...t.at), found: !t.hidden })),
+      chests: (data.CHESTS || []).map((c) => ({ ...structuredClone(c), i: d.idx(Math.floor(c.at[0]), Math.floor(c.at[1])), opened: false, found: !c.trap, sprung: false })),
+      cells: (data.CELLS || []).map((c) => ({ ...c, i: d.idx(...c.gate), freed: false })),
+      caches: (data.CACHES || []).map((c) => ({ ...structuredClone(c), found: false })),
     };
     this.L = L;
     this.rebuild();
@@ -138,6 +160,8 @@ export class Game {
     // the healing pool's water turns to poison in daylight (PLAN.md 6.3)
     if (this.data.DAYLIGHT) for (const m of this.party) if (m.items.poolWater) m.tainted = true;
     const d = this.dungeon;
+    // more of us than the spots given (the recruits): gather round the first one
+    if (tiles.length < this.order.length) tiles = this.standAround(id, ...tiles[0]);
     this.order.forEach((oid, k) => {
       const m = this.member(oid), [x, y] = tiles[k];
       Object.assign(m, { tile: d.idx(x, y), x: x + 0.5, z: y + 0.5, route: null, yaw: Math.PI / 2 });
@@ -153,8 +177,12 @@ export class Game {
   get leader() { return this.member(this.order[0]); }
   get mover() { return this.selected ? this.member(this.selected) : this.leader; }
   get busy() { return this.units.some((m) => m.route) || this.anims.length > 0 || this.enc?.phase === 'foes'; }
-  get units() { return [...this.party, ...this.foes]; }
+  get units() { return this.escort && !this.escort.fled ? [...this.party, ...this.foes, this.escort] : [...this.party, ...this.foes]; }
   memberAt(i) { return this.party.find((m) => m.tile === i && !m.dead); }
+  // Can't act: held, paralysed, struck down by poison. A hero who has bolted (Belisarius) is out
+  // of the fight until it's over.
+  helpless(u) { const s = u.status; return !!(s.paralysed || s.held || s.stricken); }
+  canAct(m) { return !m.dead && !m.downed && !this.helpless(m) && !m.status.bolted; }
   // a living foe on tile i that the party can see (or any, under the map light); bodies don't count
   foeAt(i) { return this.foes.find((f) => f.tile === i && f.alive && this.foeShown(f)); }
   foeShown(f) { return !f.fled && f.state !== 'hidden' && (!this.fogOn || this.visible[f.tile]); }
@@ -168,6 +196,8 @@ export class Game {
     for (const o of this.units) if (o !== u && !o.dead && !o.fled && o.state !== 'hidden' && !(o.def.rig === 'slime')) b[o.tile] = 1;
     return b;
   }
+  get burdened() { return treasure.burdened(this); }
+
   // ---------- traps ----------
   hiddenTrapAt(i) { return this.traps?.find((t) => t.i === i && !t.found) || null; }
   // traps nobody has found yet, the slime among them (it hangs on a wall, unnoticed)
@@ -226,7 +256,7 @@ export class Game {
     const m = this.member(id);
     if (this.mode === 'encounter') {
       // in an encounter, tapping a hero picks who acts next (there's no moving alone to undo)
-      if (m.dead || m.downed) return;
+      if (!this.canAct(m)) return;
       this.selected = id; this.attackPlan = null;
     } else {
       this.selected = this.selected === id ? null : id;
@@ -238,6 +268,7 @@ export class Game {
   swapOrder(a, b) {
     const o = this.order, i = o.indexOf(a), j = o.indexOf(b);
     if (i < 0 || j < 0 || i === j) return;
+    if (recruits.refusesPlace(this, a, j) || recruits.refusesPlace(this, b, i)) { this.say('"Not in front," says Belisarius. "I\'ll watch the back."'); this.ui.update(this); return; }
     [o[i], o[j]] = [o[j], o[i]];
     this.say(`Marching order: ${o.map((id) => this.member(id).def.name).join(', ')}.`);
     this.ui.update(this);
@@ -352,6 +383,7 @@ export class Game {
 
   rebuild() {
     this.state.bridged = new Set(traps.bridgeTiles(this));
+    this.state.openChests = new Set((this.chests || []).filter((c) => c.opened).map((c) => `${c.at[0]},${c.at[1]}`));
     this.state.hiddenPits = new Set((this.traps || []).filter((t) => !t.found && t.kind === 'pit').map((t) => t.i));
     this.scene.build(this.view, this.state);
     this.staticDecals = this.scene.decals(this.view);
@@ -451,14 +483,15 @@ export class Game {
     };
     if (solo) start(this.mover, plan.path, 0);
     else {
-      const chain = this.order.map((id) => this.member(id).tile);
+      // the party in marching order, then whoever follows it (the dead stay where they fell)
+      const line = [...this.order.map((id) => this.member(id)).filter((m) => !m.dead), ...recruits.followers(this)];
+      const chain = line.map((m) => m.tile);
       const ok = (i) => TILE[d.t[i]].walk && !TILE[d.t[i]].door && this.known(i) && d.t[i] !== T.PIT;
       const targets = groupTargets(d, plan.path, chain, ok);
       const follow = { ...this.pathOpts(), closed: false };
-      this.order.forEach((id, k) => {
-        const m = this.member(id);
+      line.forEach((m, k) => {
         if (k === 0) start(m, plan.path, 0);
-        else if (targets[k] !== m.tile) start(m, d.pathTo(m.tile, targets[k], follow)?.tiles, k * FOLLOW_DELAY);
+        else if (targets[k] !== undefined && targets[k] !== m.tile) start(m, d.pathTo(m.tile, targets[k], follow)?.tiles, k * FOLLOW_DELAY);
       });
     }
     this.target = -1; this.preview = null;
@@ -466,17 +499,9 @@ export class Game {
     this.ui.update(this);
   }
 
-  // Everyone has stopped: shut the one-way block if nobody is in it, then deal with the door the
-  // walk stopped at.
+  // Everyone has stopped: deal with the door the walk stopped at. (Room 21's block shuts by
+  // itself, on its own count: scripts/rooms.js.)
   arrived() {
-    const d = this.dungeon;
-    for (const door of d.doors.values()) {
-      if (d.t[door.i] === T.BLOCK && door.open && !this.memberAt(door.i)) {
-        door.open = false;
-        this.doorsChanged();
-        this.say('With a heavy grinding, the stone block slides back into place.');
-      }
-    }
     const p = this.pending;
     this.pending = null;
     if (p && p.door >= 0 && this.adjacentTo(p.door).length) {
@@ -522,6 +547,7 @@ export class Game {
     const name = this.doorName(door);
     if (door.key === 'lever') { this.say(`The ${name} has no handle or keyhole. Something else must work it.`); return false; }
     if (door.opensFrom >= 0 && !who.some((m) => m.tile === door.opensFrom)) { this.say(`There is no handle on this side of the ${name}.`); return false; }
+    if (door.key === 'odric' && this.keys.has('odric')) { door.key = null; this.say(`One of Odric's keys turns the lock of the ${name}.`); }
     if (door.key) { this.say(`The ${name} is locked.`); return false; }
     // the strongest of those at the door puts a shoulder to it
     const m = who.reduce((a, b) => (doorChance(b.def.str) > doorChance(a.def.str) ? b : a));
@@ -532,6 +558,7 @@ export class Game {
     door.open = true;
     this.say(`${m.def.name} forces the ${name} open (${r.text}).`);
     this.doorsChanged();
+    this.runScripts('opened', door);
     return true;
   }
   closeDoor(door) {
@@ -557,6 +584,7 @@ export class Game {
     this.say(`${m.def.name} smashes the lock off the ${this.doorName(door)}. The noise echoes down the passages.`);
     if (r.ok && !m.broken) { m.broken = true; this.say(`${m.def.name}'s weapon cracks in the blow (${r.text}).`); }
     this.doorsChanged();
+    this.runScripts('opened', door);
   }
 
   // ---------- searching ----------
@@ -596,6 +624,8 @@ export class Game {
       found = true;
       this.revealTrap(t, t.kind === 'pit' ? 'Searching, someone notices a seam in the floor: a covered pit' : 'Searching, someone notices a wet green sheen on the wall: green slime');
     }
+    if (treasure.searchCaches(this)) found = true;
+    if (treasure.searchChests(this)) found = true;
     if (!found) this.say('The party searches the walls and floor for a turn, and finds nothing.');
     this.doorsChanged();
     this.runScripts('search');
@@ -643,6 +673,15 @@ export class Game {
       out.push({ id: 'climb', icon: '⤓', label: 'Climb down', hint: this.state.rope ? 'Down the rope' : 'A DEX check each, or fall 1d6', ok: true, run: () => this.climbDown() });
     }
     if (idle && exit && this.near(exit.a, 1)) out.push({ id: 'climbup', icon: '⤒', label: 'Climb the tunnel', hint: 'Back up to the surface', ok: true, run: () => this.climbUp() });
+    // Odric's stairs: from room 15 up to the trees behind the temple, and back down
+    const stairs = this.dungeon.links.find((l) => l.kind === 'stairs');
+    if (idle && stairs && this.near(stairs.a, 1)) {
+      out.push(this.L.id === 'dungeon'
+        ? { id: 'stairsup', icon: '⤒', label: 'Climb the stairs', hint: 'Up to the surface, behind the temple', ok: true, run: () => this.takeStairs('surface') }
+        : { id: 'stairsdown', icon: '⤓', label: 'Go down the stairs', hint: "Odric's stairs, to room 15", ok: true, run: () => this.takeStairs('dungeon') });
+    }
+    // the cult's robes from room 15: a disguise at a distance
+    if (idle && this.state.robes) out.push({ id: 'robes', icon: '👘', label: this.state.robesOn ? 'Take off the robes' : 'Put on the robes', hint: this.state.robesOn ? 'Back in your own colours' : 'Cultists ignore you until you are close', ok: true, run: () => { this.state.robesOn = !this.state.robesOn; this.say(this.state.robesOn ? 'The party pulls the green and white robes on over its armour.' : 'The robes come off.'); } });
     // light: the selected member, or the first in line without one
     const sel = this.selected && this.member(this.selected);
     const dark = sel || this.order.map((id) => this.member(id)).find((m) => !m.light && (m.torches || m.stub));
@@ -672,11 +711,12 @@ export class Game {
       });
     }
     if (this.casting) out.push({ id: 'uncast', icon: '✕', label: 'Stop casting', ok: true, run: () => { this.casting = null; this.ui.update(this); } });
-    const extra = [...magic.actions(this), ...skills.actions(this), ...traps.actions(this)];
+    const extra = [...ending.actions(this), ...magic.actions(this), ...skills.actions(this), ...traps.actions(this), ...treasure.actions(this)];
     for (const [group, script] of Object.entries(SCRIPTS)) if (script.actions && (!script.level || script.level === this.L.id)) extra.push(...script.actions(this, this.scriptState[group] ||= {}));
     return [...out, ...extra];
   }
   act(id) {
+    if (this.dialogue) return;
     const a = this.actions().find((x) => x.id === id);
     if (!a || !a.ok) return;
     a.run();
@@ -713,6 +753,17 @@ export class Game {
   }
   float(u, text, cls) { this.floats.push({ x: u.x, z: u.z, y: this.scene.floorH(u.tile) + 1.4, text, cls, t: 0 }); }
 
+  // A denizen appears that wasn't there (the rat in the coffin).
+  spawn(kind, i, group, hp, state = 'resting') {
+    const [x, y] = this.dungeon.xy(i);
+    const f = { id: `${this.L.id}-${kind}${this.foes.length}`, def: MONSTERS[kind], kind, side: 'foe', group, guard: false, loot: null,
+      home: i, tile: i, x: x + 0.5, z: y + 0.5, yaw: 0, hp, maxHp: hp, state, alive: true, dead: false, fled: false, status: {}, spotted: false, on: null,
+      route: null, k: 0, wait: 0, walk: 0, moving: 0, flash: 0, off: [0, 0], moved: false, acted: false };
+    this.foes.push(f);
+    (this.groups[group] ||= { count: 0, deaths: 0, first: false, half: false }).count++;
+    return f;
+  }
+
   // Something loud: room scripts may hear it (the orcs, PLAN.md 6.3).
   noise(i, r) { const [x, y] = this.dungeon.xy(i); this.runScripts('noise', x + 0.5, y + 0.5, r); }
   runScripts(hook, ...args) {
@@ -726,6 +777,8 @@ export class Game {
   checkEncounter() {
     for (const f of this.foes) {
       if (!f.alive || f.fled || ASIDE.has(f.state) || f.def.npc || f.status.asleep) continue;
+      // in the cult's robes, the party passes for cultists until it's close (PLAN.md 6.3, room 15)
+      if (this.state.robesOn && f.def.cult && f.state !== 'alert' && !this.party.some((m) => !m.dead && this.distTo(m.tile, f.tile) <= 3)) continue;
       const seen = this.visible[f.tile];
       const sees = this.party.some((m) => !m.dead && canSee(this, f, m));
       if (seen || sees) { this.startEncounter(f.group, {}); return; }
@@ -753,24 +806,40 @@ export class Game {
     const ps = partySurprised ?? surprise(this.rng).ok, fs = foesSurprised ?? surprise(this.rng).ok;
     this.mode = 'encounter';
     this.enc = { groups: new Set([group]), round: 0, phase: null, surprised: { party: ps, foes: fs }, init: null };
-    for (const f of this.foes) if (f.group === group && !ASIDE.has(f.state) && f.state !== 'feeding') f.state = 'fighting';
-    const names = this.activeFoes().map((f) => f.def.name);
-    const what = `${names.length} ${names[0]}${names.length > 1 ? 's' : ''}`.replace('Giant rats', 'giant rats');
+    // (the slime keeps eating, Odric keeps to his rite, and the gecko to its chain)
+    for (const f of this.foes) if (f.group === group && !ASIDE.has(f.state) && !['feeding', 'ritual', 'chained', 'looping'].includes(f.state)) f.state = 'fighting';
+    // the shaft of sunlight in 23 dazzles the party on the first round (PLAN.md 6.3)
+    if (this.party.some((m) => !m.dead && this.dungeon.roomOf(m.tile)?.id === '23')) this.enc.glare = true;
+    // a room script may bring others in first (Odric's dead, the gecko)
+    this.runScripts('start', group);
+    const what = this.foeList(this.activeFoes());
     this.say(`Encounter: ${what}!${ps && !fs ? ' The party is caught by surprise.' : ''}${fs && !ps ? ' They are taken by surprise.' : ''}`);
     this.ui.banner?.(`${what}${ps && !fs ? ' — surprised!' : fs && !ps ? ' — they are surprised' : ''}`);
     this.selected = null;
+    this.ui.bestiary?.(this);
     this.runEncounter();
   }
+  // "Kithar, Kerzen and Ojar", "4 goblins", "Odric, 3 skeletons and a giant gecko"
+  foeList(foes) {
+    const by = new Map();
+    for (const f of foes) by.set(f.def.proper ? f.def.name : MONSTERS[f.kind].name, (by.get(f.def.proper ? f.def.name : MONSTERS[f.kind].name) || 0) + (f.def.proper ? 0 : 1));
+    const parts = [...by].map(([name, n]) => (n === 0 ? name : n === 1 ? `a ${name.toLowerCase()}` : `${n} ${name.toLowerCase().replace(/y$/, 'ie')}s`.replace('mans', 'men')));
+    const s = parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}` : parts[0] || 'nothing';
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  }
   activeFoes() { return this.foes.filter((f) => this.enc?.groups.has(f.group) && f.alive && !f.fled && !ASIDE.has(f.state)); }
-  ableParty() { return this.party.filter((m) => !m.dead && !m.downed); }
+  ableParty() { return this.party.filter((m) => this.canAct(m)); }
 
   // The round loop: group initiative each round, the winning side's phase, then the other's.
   async runEncounter() {
     while (this.mode === 'encounter') {
       const e = this.enc;
       e.round++;
-      for (const u of this.units) { u.moved = false; u.acted = false; u.moveMode = null; }
+      this.roundsFought++;
+      for (const u of this.units) { u.moved = false; u.acted = false; u.moveMode = null; u.hits = null; }
       e.init = initiative(this.rng);
+      // zombies are slow: they always lose initiative (B/X)
+      if (this.activeFoes().length && this.activeFoes().every((f) => f.def.slow)) e.init.partyFirst = true;
       const order = e.init.partyFirst ? ['party', 'foes'] : ['foes', 'party'];
       // the initiative dice: brass for the party, red for the foes
       if (this.activeFoes().length) {
@@ -801,8 +870,11 @@ export class Game {
     return new Promise((res) => {
       this.enc.phase = 'party';
       this.enc.endPhase = res;
-      const first = this.order.map((id) => this.member(id)).find((m) => !m.dead && !m.downed);
+      // retching from a locust's spit costs the whole round
+      for (const m of this.party) if (m.status.retching) { delete m.status.retching; m.acted = m.moved = true; this.say(`${m.def.name} is doubled over, retching.`); }
+      const first = this.order.map((id) => this.member(id)).find((m) => this.canAct(m) && !m.acted);
       this.selected = first?.id ?? null;
+      this.runScripts('partyPhase');
       this.attackPlan = null;
       this.ui.update(this);
     });
@@ -841,7 +913,13 @@ export class Game {
         if (!this.visible[f.tile]) { f.fled = true; this.say(`The ${f.def.name.toLowerCase()} flees out of sight.`); }
         continue;
       }
-      if (plan.target) await this.attack(f, plan.target, 'melee');
+      if (plan.cast) await this.foeCast(f, plan.cast);
+      else if (plan.spit) await this.spit(f, plan.spit);
+      else if (plan.target) {
+        // claw, claw, bite: each of a monster's attacks, while the target is still standing
+        const n = f.def.attacks?.length || 1;
+        for (let k = 0; k < n && !plan.target.dead && !plan.target.downed && f.alive; k++) await this.attack(f, plan.target, 'melee', k);
+      }
       await this.sleep(shown ? 200 : 0);
     }
     this.enc.phase = null;
@@ -850,6 +928,7 @@ export class Game {
   endRound() {
     magic.tickStatus(this, 1 / 6);
     traps.slimeRound(this);
+    this.runScripts('round');
     for (const f of this.foes) if (f.status.turned && --f.status.turned <= 0) { delete f.status.turned; if (f.alive) f.state = 'fighting'; }
     // out of contact: nobody in sight on either side for a whole round ends the encounter, and
     // the foes still about go back to watching for the party
@@ -873,15 +952,25 @@ export class Game {
 
   endEncounter() {
     if (!this.ableParty().length) {
-      this.mode = 'over'; this.enc = null;
       this.say('The party has fallen. Kollchap keeps its sword.');
-      this.ui.gameOver?.(this);
+      ending.finish(this, 'dead');
       return;
     }
     // anyone still standing who wasn't in the thick of it goes back to watching for the party
     for (const f of this.foes) if (f.alive && f.state === 'fighting') f.state = 'alert';
     this.mode = 'explore'; this.enc = null; this.selected = null; this.attackPlan = null;
+    for (const m of this.party) { delete m.status.retching; delete m.status.held; }
     this.say('The fight is over.');
+    // what was shot or thrown can mostly be picked up again: daggers and sling stones, and half
+    // the arrows (the rest break)
+    let found = 0;
+    for (const m of this.party) {
+      if (!m.spent || m.dead) continue;
+      const back = /bow/.test(m.def.missile.name) ? Math.floor(m.spent / 2) : m.spent;
+      m.ammo = Math.min(m.def.missile.ammo, m.ammo + back); found += back; m.spent = 0;
+    }
+    if (found) this.say(`The party gathers up ${found} of the arrows, stones and daggers it loosed.`);
+    this.runScripts('ended');
     this.sightKey = '';
     this.ui.update(this);
   }
@@ -889,8 +978,10 @@ export class Game {
   // ----- the party's phase: move, then act (or act, then move if they haven't yet) -----
   // Where the selected hero can still move to this round.
   reachFor(m) {
-    if (!m || m.moved || m.dead || m.downed || m.status.slimed) return null;
-    const mv = m.moveMode === 'dash' ? m.def.mv * 2 : m.moveMode === 'withdraw' ? Math.floor(m.def.mv / 2) : m.def.mv;
+    if (!m || m.moved || !this.canAct(m) || m.status.slimed) return null;
+    // sick (the centipede) or loaded down with treasure: half speed
+    const base = m.def.mv >> ((m.status.sick ? 1 : 0) + (this.burdened ? 1 : 0)) || 1;
+    const mv = m.moveMode === 'dash' ? base * 2 : m.moveMode === 'withdraw' ? Math.max(1, Math.floor(base / 2)) : base;
     return this.dungeon.reach(m.tile, mv, { closed: false, pits: false, blocked: this.blockedFor(m), known: this.fogOn ? this.explored : null, floorPits: this.floorPits() });
   }
   encounterPlan(goal) {
@@ -927,7 +1018,7 @@ export class Game {
 
   // What an attack would take, before it's made: weapon, every modifier and the odds
   // (PLAN.md 3.4: listed in the attack panel before you commit).
-  planAttack(a, t) {
+  planAttack(a, t, k = 0) {
     const d = this.dungeon, [ax, ay] = d.xy(a.tile), [tx, ty] = d.xy(t.tile);
     const dist = Math.hypot(ax - tx, ay - ty);
     const party = a.side === 'party';
@@ -935,7 +1026,8 @@ export class Game {
     let kind = this.inMelee(a.tile, t.tile) ? 'melee' : party && a.ammo > 0 ? 'missile' : null;
     const why = !kind ? (party ? `Out of ${a.def.missile.name} ammunition` : 'Too far') : null;
     if (!kind) return { a, t, ok: false, why };
-    const weapon = party ? a.def[kind] : { name: 'attack', dmg: a.def.dmg };
+    if (party && a.status.sick) return { a, t, ok: false, why: `${a.def.name} is too sick to fight` };
+    const weapon = party ? (kind === 'melee' && a.weapon) || a.def[kind] : a.def.attacks?.[k] || { name: 'attack', dmg: a.def.dmg };
     const mods = [];
     let ok = true, reason = null;
     if (kind === 'missile') {
@@ -947,6 +1039,9 @@ export class Game {
         if (mod(a.def.dex)) mods.push({ label: `DEX ${a.def.dex}`, value: mod(a.def.dex) });
       }
     } else if (party && mod(a.def.str)) mods.push({ label: `STR ${a.def.str}`, value: mod(a.def.str) });
+    if (weapon.plus) mods.push({ label: weapon.name, value: weapon.plus });
+    // the sun through the shaft in 23, in the eyes on the first round (PLAN.md 3.4)
+    if (party && this.enc?.glare && this.enc.round === 1) mods.push({ label: 'Sun glare', value: -2 });
     if (this.swarm) mods.push({ label: 'Bat swarm', value: -2 });
     if (kind === 'melee' && a.status?.hidden) mods.push({ label: 'Backstab', value: 4 });
     if (t.status?.protection && a.def.align === 'C') mods.push({ label: 'Protection from Evil', value: -1 });
@@ -975,7 +1070,7 @@ export class Game {
     if (this.encounterOver() && this.enc) { this.enc.phase = null; this.enc.endPhase?.(); return; }
     // next hero who still has something to do
     if (m.acted) {
-      const next = this.order.map((id) => this.member(id)).find((x) => !x.dead && !x.downed && !x.acted);
+      const next = this.order.map((id) => this.member(id)).find((x) => this.canAct(x) && !x.acted);
       if (next) this.selected = next.id;
     }
     this.refreshPreview();
@@ -984,12 +1079,12 @@ export class Game {
   }
 
   // Make an attack: roll, lunge, and on a hit, damage (PLAN.md 3.4).
-  async attack(a, t, kind) {
-    const p = this.planAttack(a, t);
+  async attack(a, t, kind, k = 0) {
+    const p = this.planAttack(a, t, k);
     if (!p.ok) return;
     const d = this.dungeon, [ax, ay] = d.xy(a.tile), [tx, ty] = d.xy(t.tile);
     a.yaw = Math.atan2(-(tx - ax), ty - ay);
-    if (kind === 'missile') a.ammo--;
+    if (kind === 'missile') { a.ammo--; a.spent = (a.spent || 0) + 1; }
     const r = attackRoll(this.rng, p.base, p.ac, p.mods);
     if (p.helpless) r.hit = true;
     // the d20, rolled out from the attacker's side toward the target
@@ -1010,14 +1105,16 @@ export class Game {
       this.ui.lastRoll?.({ ...p, roll: r });
       return;
     }
-    const bonus = a.side === 'party' && kind === 'melee' ? mod(a.def.str) : 0;
+    const bonus = (a.side === 'party' && kind === 'melee' ? mod(a.def.str) : 0) + (p.weapon.plus || 0);
     let n = damage(this.rng, p.weapon.dmg, bonus) * (p.backstab ? 2 : 1);
     if (a.status?.hidden) skills.unhide(this, a, p.backstab ? 'strikes from the shadows: a backstab' : 'gives away their hiding place');
     // a sleeping foe struck in melee dies at once (B/X Sleep)
     if (p.helpless && kind === 'melee' && t.status?.asleep) n = Math.max(n, t.hp);
-    this.say(`${who} ${kind === 'missile' ? `hits ${whom} with the ${p.weapon.name}` : `hits ${whom}`} for ${n} (${p.helpless ? 'helpless' : text}${p.backstab ? ', backstab x2' : ''}).`);
+    const how = kind === 'missile' ? `hits ${whom} with the ${p.weapon.name}` : `hits ${whom}${a.side !== 'party' && p.weapon.name !== 'attack' ? ` (${p.weapon.name})` : ''}`;
+    this.say(`${who} ${how} for ${n} (${p.helpless ? 'helpless' : text}${p.backstab ? ', backstab x2' : ''}).`);
     this.ui.lastRoll?.({ ...p, roll: r, dmg: n });
     this.hurt(t, n, a);
+    if (t.side === 'party' && !t.dead) this.afflict(a, t, p.weapon);
   }
 
   hurt(u, n, by) {
@@ -1025,7 +1122,7 @@ export class Game {
     this.float(u, `-${n}`, 'dmg');
     if (u.side === 'party') {
       if (u.downed) { u.dead = true; u.downed = 0; u.light = null; this.say(`${u.def.name} is killed.`); this.sightKey = ''; return; }
-      if (u.hp <= 0) { u.hp = 0; u.downed = DOWNED_ROUNDS; this.say(`${u.def.name} falls, bleeding.`); this.float(u, 'downed', 'kill'); }
+      if (u.hp <= 0) { u.hp = 0; u.downed = DOWNED_ROUNDS; this.say(`${u.def.name} falls, bleeding.`); this.float(u, 'downed', 'kill'); this.runScripts('downed', u); }
       else if (by?.def.disease && u.maxHp > 1) {
         const s = save(this.rng, u.def.cls, 'poison');
         if (!s.ok && !u.diseased) { u.diseased = true; u.maxHp--; this.say(`The bite festers: ${u.def.name} is diseased, -1 max HP until rested (${s.text}).`); }
@@ -1035,8 +1132,10 @@ export class Game {
     if (u.hp > 0) { if (u.status.asleep) { delete u.status.asleep; this.say(`The ${u.def.name.toLowerCase()} wakes with a howl.`); } return; }
     u.alive = false; u.dead = true; u.route = null;
     if (u.on) { delete u.on.status.slimed; u.on = null; }
-    this.say(`The ${u.def.name.toLowerCase()} is slain.`);
+    this.say(`${this.theName(u)} is slain.`);
     this.float(u, 'slain', 'kill');
+    this.kills.push(u.def);
+    this.runScripts('killed', u);
     const g = this.groups[u.group];
     g.deaths++;
     // morale: at the group's first death, and again when half are down (PLAN.md 3.4)
@@ -1049,6 +1148,74 @@ export class Game {
       if (SCRIPTS[u.group]?.broke?.(this, this.scriptState[u.group] ||= {})) return;
       for (const f of left) f.state = 'fleeing';
     }
+  }
+
+  // How a unit is named in the log: heroes and named denizens by name, the rest as "the orc".
+  theName(u) { return u.side === 'party' || u.def.proper ? u.def.name : `The ${u.def.keepCase ? u.def.name : u.def.name.toLowerCase()}`; }
+
+  // What a monster's hit does beyond damage (PLAN.md 3.4): the ghoul's paralysing touch, the
+  // rockmen's petrifying fists (both landing in one round), the centipede's sickening bite.
+  afflict(a, t, weapon) {
+    if (t.downed || t.dead) return;
+    if (weapon.paralyse && !t.status.paralysed) {
+      const s = save(this.rng, t.def.cls, 'paralysis');
+      if (s.ok) this.say(`${t.def.name} shrugs off the numbing touch (${s.text}).`);
+      else { t.status.paralysed = roll(this.rng, '2d4') / 6; this.say(`${t.def.name} goes rigid: paralysed for ${Math.round(t.status.paralysed * 6)} rounds (${s.text}). Cure Light Wounds will free them.`); this.float(t, 'paralysed', 'kill'); }
+    }
+    if (a.def.petrify) {
+      a.hits = a.hits?.t === t ? { t, n: a.hits.n + 1 } : { t, n: 1 };
+      if (a.hits.n === 2) {
+        const s = save(this.rng, t.def.cls, 'paralysis');
+        if (s.ok) this.say(`Stone creeps over ${t.def.name}'s skin, and fades (${s.text}).`);
+        else this.petrify(t, s);
+      }
+    }
+    if (a.def.poison === 'sick' && !t.status.sick) {
+      const s = save(this.rng, t.def.cls, 'poison');
+      if (s.ok) this.say(`${t.def.name} feels the poison burn, and throws it off (${s.text}).`);
+      else { t.status.sick = true; this.say(`The bite's poison takes hold: ${t.def.name} is sick, at half speed and unable to fight until the party makes camp (${s.text}).`); }
+    }
+  }
+  // Turned to stone: out of the mission, a statue where they stood (PLAN.md 6.3: on Normal, until
+  // the end of the mission).
+  petrify(m, s) {
+    m.dead = true; m.petrified = true; m.downed = 0; m.light = null; m.route = null;
+    this.say(`${m.def.name} turns to stone where they stand (${s.text})!`);
+    this.float(m, 'stone', 'kill');
+    this.sightKey = '';
+  }
+  // A locust's spit: save vs poison, or retch through the next round.
+  async spit(f, t) {
+    const d = this.dungeon, [fx, fy] = d.xy(f.tile), [tx, ty] = d.xy(t.tile);
+    f.yaw = Math.atan2(-(tx - fx), ty - fy);
+    f.spat = this.enc.round;
+    await this.tween(0.3, (k) => { const s = Math.sin(k * Math.PI) * 0.12; f.off = [Math.sin(-f.yaw) * -s, Math.cos(f.yaw) * s]; });
+    f.off = [0, 0];
+    this.sparkle(t.x, t.z, 'spit');
+    const s = save(this.rng, t.def.cls, 'poison');
+    if (s.ok) this.say(`${this.theName(f)} spits foul juice at ${t.def.name}, who wipes it away (${s.text}).`);
+    else { t.status.retching = true; this.say(`${this.theName(f)} spits foul juice in ${t.def.name}'s face: retching, they lose their next round (${s.text}).`); }
+  }
+  // A denizen's spell (PLAN.md 9): the Arch-deaconess's Hold Person, Kithar's Cure Light Wounds.
+  async foeCast(f, { spell, target }) {
+    (f.cast ||= {})[spell] = true;
+    this.camera.goal = [f.x, f.z];
+    await this.tween(0.5, (k) => { f.off = [0, Math.sin(k * Math.PI) * 0.001]; });
+    this.sparkle(target.x, target.z, spell === 'hold' ? 'charm' : 'cure');
+    if (spell === 'hold') {
+      // one person: the save is at -2 (B/X). Held, they are helpless for 1d4+2 rounds (a long
+      // fight's worth; the book's 9 turns would end any fight on the spot)
+      const s = save(this.rng, target.def.cls, 'spells'), ok = s.roll - 2 >= s.need;
+      const text = `save vs spells at -2: d20 ${s.roll}, needed ${s.need + 2}`;
+      if (ok) this.say(`${this.theName(f)} points at ${target.def.name} and speaks a word of binding. ${target.def.name} fights it off (${text}).`);
+      else { target.status.held = (roll(this.rng, '1d4') + 2) / 6; this.say(`${this.theName(f)} points at ${target.def.name} and speaks a word of binding: Hold Person! ${target.def.name} cannot move (${text}).`); this.float(target, 'held', 'kill'); }
+    } else if (spell === 'cure') {
+      const n = roll(this.rng, '1d6+1'), was = target.hp;
+      target.hp = Math.min(target.maxHp, target.hp + n);
+      this.float(target, `+${target.hp - was}`, 'heal');
+      this.say(`${this.theName(f)} lays hands on ${this.theName(target).toLowerCase()} and prays: ${target.hp - was} wounds close.`);
+    }
+    await this.sleep(250);
   }
 
   // Bandage a downed ally beside you: back on their feet with 1 HP (PLAN.md 3.4).
@@ -1135,6 +1302,7 @@ export class Game {
     }
     this.say(this.state.rope ? 'One by one the party lets itself down the rope into the dark.' : 'One by one the party clambers down the steep tunnel into the dark.');
     this.useLevel('dungeon', this.levels.dungeon.data.PARTY_START);
+    this.state.wentDown = true;
     // light the way: the two torch-bearers, if nobody has a light yet
     if (!this.party.some((m) => m.light)) for (const id of START_LIGHTS) { const m = this.member(id); if (!m.dead && !m.downed) this.lightTorch(m); }
     this.sightKey = '';
@@ -1144,7 +1312,29 @@ export class Game {
     this.advance(10);
     this.say('The party hauls itself back up the tunnel, into the open air.');
     const [hx, hy] = this.levels.surface.dungeon.xy(this.levels.surface.dungeon.links[0].a);
-    this.useLevel('surface', [[hx + 1, hy], [hx + 2, hy], [hx + 1, hy - 1], [hx + 1, hy + 1]]);
+    this.useLevel('surface', this.standAround('surface', hx + 1, hy));
+    ending.reachSurface(this);
+  }
+  // Odric's stairs, between room 15 and the trees behind the temple.
+  takeStairs(to) {
+    this.advance(5);
+    const L = this.levels[to], link = L.dungeon.links.find((l) => l.kind === 'stairs'), [x, y] = L.dungeon.xy(link.a);
+    if (to === 'surface') this.say('Up the narrow stairs, through a trapdoor under a fallen slab: the party comes out among the trees behind the temple.');
+    else { this.say('Down the narrow stairs, into the changing room.'); this.state.wentDown = true; }
+    this.useLevel(to, this.standAround(to, x, y));
+    if (to === 'surface') ending.reachSurface(this);
+  }
+  // Free walkable tiles around (x, y) on a level, one for each in the marching order.
+  standAround(id, x, y) {
+    const d = this.levels[id].dungeon, out = [];
+    for (let r = 0; out.length < this.order.length && r < 6; r++) {
+      for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r || out.length >= this.order.length || !d.inside(x + dx, y + dy)) continue;
+        const i = d.idx(x + dx, y + dy), t = TILE[d.t[i]];
+        if (t.walk && !t.door && d.t[i] !== T.PIT && d.t[i] !== T.HOLE) out.push([x + dx, y + dy]);
+      }
+    }
+    return out;
   }
 
   // The bats (PLAN.md 6.3): a shrieking swarm, not a set of monsters. While it lasts, everyone is
@@ -1153,6 +1343,7 @@ export class Game {
     this.swarm = { rounds: 2 + die(this.rng, 4) + die(this.rng, 4) };
     this.say('Leathery wings everywhere: a swarm of bats bursts from the roof of the tunnel!');
     this.ui.banner?.('Bats!');
+    this.ui.bestiary?.(this);
     this.mode = 'encounter';
     this.enc = { groups: new Set(), round: 0, phase: null, surprised: { party: false, foes: false }, init: null };
     this.selected = null;
@@ -1191,7 +1382,7 @@ export class Game {
   // Tap a party member to select them (they then move alone); tap a tile once to preview the
   // walk there, and again to go.
   tap(i) {
-    if (this.busy) return;
+    if (this.busy || this.dialogue) return;
     if (this.mode === 'encounter') { this.tapEncounter(i); return; }
     if (this.casting) { this.castAt(i); return; }
     // tapping a foe who isn't fighting yet (the watching hobgoblins): attack them
@@ -1207,6 +1398,7 @@ export class Game {
   }
 
   cancel() { this.target = -1; this.refreshPreview(); this.ui.update(this); }
+  choose(k) { dialogue.choose(this, k); }
 
   refreshPreview() {
     const goal = this.target >= 0 ? this.target : this.hoverTile;
@@ -1272,7 +1464,8 @@ export class Game {
         traps.onEnter(this, m, route[s - 1], route[s]);
         if (m.status?.hidden && this.lit[route[s]]) skills.unhide(this, m, 'steps into the light and is seen');
         if (m === clockKeeper && this.mode === 'explore') {
-          this.advance(minutesFor(this.stepCost(route[s - 1], route[s])) * (this.probing ? 2 : 1));
+          // probing with the pole, or weighed down with treasure: half speed
+          this.advance(minutesFor(this.stepCost(route[s - 1], route[s])) * (this.probing ? 2 : 1) * (this.burdened ? 2 : 1));
           this.ui.update(this);
         }
         if (m.route !== route) break; // the walk was cut short (a fall, the slime)
@@ -1381,12 +1574,14 @@ export class Game {
 
     // the miniatures
     for (const m of this.party) {
-      const h = this.scene.floorH(this.eyeOf(m)), lying = m.dead || m.downed > 0;
+      // the petrified stand where they were turned, a statue
+      const h = this.scene.floorH(this.eyeOf(m)), lying = (m.dead && !m.petrified) || m.downed > 0 || !!m.status.stricken;
       const lit = m.light === 'lantern' ? (m.shut ? 'shut' : 'lantern') : m.light;
       const hint = lit === 'torch' ? this.hintAt(m.x, m.z) : null;
       m.flame = drawHero(this.dyn, m.def, {
         x: m.x + m.off[0], z: m.z + m.off[1], y: h, yaw: m.yaw, walk: m.walk, moving: m.moving, breath: hash2(m.def.str, m.def.dex) * 6,
-        light: lit, lean: hint ? [hint[0] * hint[2], hint[1] * hint[2]] : null, flash: m.flash, lying, hidden: !!m.status.hidden,
+        light: lit, lean: hint ? [hint[0] * hint[2], hint[1] * hint[2]] : null, flash: m.flash, lying, hidden: !!m.status.hidden || !!m.status.bolted,
+        robed: !!this.state.robesOn, stone: !!m.petrified, frozen: this.helpless(m), frost: !!m.status.paralysed,
         selected: this.selected === m.id, leader: !this.selected && this.order[0] === m.id && this.mode === 'explore',
       }, this.time);
       // a downed bearer's light drops and keeps burning on the floor (PLAN.md 3.5)
@@ -1401,15 +1596,33 @@ export class Game {
       if (!shown) continue;
       const asleep = !!f.status.asleep;
       const pose = { x: f.x + f.off[0], z: f.z + f.off[1], y: this.scene.floorH(f.tile), yaw: f.yaw, walk: f.walk, moving: f.moving,
-        breath: hash2(f.home, 3) * 6, foe: !f.status.charmed && !f.def.npc, flash: f.flash, lying: f.dead || asleep, asleep,
-        selected: this.attackPlan?.t === f, on: f.on, spotted: f.spotted };
-      if (f.def.rig === 'slime') drawSlime(this.dyn, f.def, pose, this.time);
-      else if (f.def.rig === 'rat') drawRat(this.dyn, f.def, pose);
-      else drawHero(this.dyn, f.def, pose, this.time);
+        breath: hash2(f.home, 3) * 6, foe: !f.status.charmed && !f.def.npc && !['surrendered', 'bound', 'ally'].includes(f.state), flash: f.flash,
+        lying: f.dead || asleep || f.state === 'bound', asleep: asleep || f.state === 'bound',
+        selected: this.attackPlan?.t === f, on: f.on, spotted: f.spotted, frozen: f.state === 'captive',
+        chainTo: f.state === 'chained' && this.data.CIRCLE_12 ? this.data.CIRCLE_12.at : null };
+      const rig = { slime: drawSlime, rat: drawRat, skeleton: drawSkeleton, rockman: drawRockman, lizard: drawLizard, centipede: drawCentipede, locust: drawLocust }[f.def.rig] || drawHero;
+      rig(this.dyn, f.def, pose, this.time);
       // a sleeper's z's drift up now and then
       if (asleep && !f.dead && Math.floor(this.time * 0.8 + f.home) !== Math.floor((this.time - 1 / 60) * 0.8 + f.home)) this.float(f, 'z', 'zz');
     }
 
+    // the prisoners: in their cells, and once freed, a huddle trailing the party
+    for (const c of this.cells || []) {
+      if (c.freed) continue;
+      for (let k = 0; k < c.count; k++) {
+        const [x, y] = c.at[k % c.at.length], j = d.idx(x, y);
+        if (this.fogOn && !this.visible[j]) continue;
+        const o = Math.floor(k / c.at.length) * 0.25;
+        drawHero(this.dyn, recruits.VILLAGER, { x: x + 0.5 + o, z: y + 0.4 - o, y: this.scene.floorH(j), yaw: Math.PI + hash2(x, y), walk: 0, moving: 0, breath: k * 1.7 + x, foe: false }, this.time);
+      }
+    }
+    if (this.escort && !this.escort.fled) {
+      const e = this.escort, n = Math.min(e.count, 4);
+      for (let k = 0; k < n; k++) {
+        const a = k * 2.4 + 0.6, r = k ? 0.28 : 0;
+        drawHero(this.dyn, recruits.VILLAGER, { x: e.x + Math.cos(a) * r, z: e.z + Math.sin(a) * r, y: this.scene.floorH(this.eyeOf(e)), yaw: e.yaw, walk: e.walk + k, moving: e.moving, breath: k * 2.3, foe: false }, this.time);
+      }
+    }
     // dice on the table
     for (const die of this.dice) {
       const fade = Math.min(1, die.life * 2), s = (die.kind === 'd20' ? 0.42 : 0.3) * fade;
@@ -1451,6 +1664,15 @@ export class Game {
       for (const f of this.foes) if (f.alive && f.def.align === 'C' && this.distTo(f.tile, this.leader.tile) <= 24) mark(f.tile, 9, 0.9, [1, 0.15, 0.1], 0.75, 0.1, this.xray);
     }
     if (this.heard && this.time < this.heard.until) for (const i of this.heard.tiles) mark(i, 8, 0.8, [1, 0.3, 0.25], 0.5, 0.2, this.xray);
+    // the sword hums near Chaos: a pulsing ring on the wielder's base, and a mark on the side the
+    // nearest one is, stronger as it closes (PLAN.md 5)
+    const h = ending.hum(this);
+    if (h) {
+      const k = 1 - h.dist / ending.HUM_RANGE, pulse = 0.5 + 0.5 * Math.sin(this.time * (6 + 10 * k));
+      mark(h.w.tile, 9, 0.98, [0.55, 0.75, 1], 0.4 + 0.5 * k * pulse, 0.08);
+      const [wx, wy] = d.xy(h.w.tile);
+      this.decals.push(wx + 0.5 + h.dx * 0.62, this.scene.floorH(h.w.tile) + 0.03, wy + 0.5 + h.dz * 0.62, 0, 0.3, 0.3, 2, 0, 0.6, 0.85, 1, 0.5 + 0.5 * k * pulse, 0.4, h.w.tile, 0, 0);
+    }
     // in an encounter: where the selected hero can still move, and a ring under them
     if (this.mode === 'encounter' && this.enc?.phase === 'party' && !this.busy) {
       const m = this.selected && this.member(this.selected), reach = this.reachFor(m);

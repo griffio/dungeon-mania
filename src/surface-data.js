@@ -34,7 +34,11 @@ export const ROOMS = [
 ];
 export const DOORS = [];
 // The hole: climbing down it is the way into the dungeon.
-export const LINKS = [{ id: 'hole', from: [5, 6], to: 'dungeon', kind: 'climb', note: 'A steep tunnel, 40 ft down' }];
+export const LINKS = [
+  { id: 'hole', from: [5, 6], to: 'dungeon', kind: 'climb', note: 'A steep tunnel, 40 ft down' },
+  // where the stairs from room 15 come out: a fallen slab in the trees behind the temple
+  { id: 'stairs', from: [2, 11], to: 'dungeon', kind: 'stairs', note: "Odric's stairs, up from room 15" },
+];
 export const START = [26, 6];
 export const PARTY_START = [[24, 6], [25, 6], [26, 6], [27, 6]];
 

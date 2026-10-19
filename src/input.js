@@ -119,6 +119,7 @@ export class Input {
     if (!g || e.metaKey || e.ctrlKey) return;
     const cam = g.camera;
     // number keys fire the action bar's buttons
+    if (g.dialogue) { if (/^[1-9]$/.test(e.key)) g.choose(Number(e.key) - 1); return; }
     if (/^[1-9]$/.test(e.key)) { const a = g.ui.actionList?.[Number(e.key) - 1]; if (a) g.act(a.id); return; }
     if (e.key === 'Escape' && g.casting) { g.casting = null; g.ui.update(g); return; }
     if (g.mode === 'encounter') {

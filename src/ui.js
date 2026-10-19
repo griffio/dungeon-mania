@@ -1,7 +1,23 @@
 import { TILE } from './dungeon.js';
 import { clockText, minutesFor } from './rules.js';
-import { TORCH_MINUTES, OIL_MINUTES, SPELLS } from './defs.js';
+import { TORCH_MINUTES, OIL_MINUTES, SPELLS, MONSTERS } from './defs.js';
 import { Automap } from './automap.js';
+import * as treasure from './treasure.js';
+import { hum } from './ending.js';
+
+const portrait = (id) => `assets/portraits/${id}.webp`;
+// The bestiary card's portrait for each kind, and a line on what to watch for.
+const BEAST = {
+  hobgoblin: ['hobgoblin', 'Sees in the dark, 60 ft.'], orc: ['orc', 'Sees in the dark. Watches the corridor from its guardroom.'],
+  rat: ['rat', 'Goes for the weakest. Its bite can carry disease.'], slime: ['slime', 'Eats through anything in six rounds. Only fire hurts it.'],
+  goblin: ['goblin', 'Small, cowardly, and knows the back ways.'], ghoul: ['ghoul', 'Undead. Claw, claw, bite: each can paralyse. Cure Light Wounds frees the paralysed.'],
+  archdeaconess: ['archdeaconess', 'A cleric of Chaos. Opens with Hold Person.'], rockman: ['rockman', 'Two stone fists: if both land, save or be turned to stone.'],
+  kithar: ['kithar', 'Heals his brothers. Might surrender.'], underpriest: ['underpriest', 'Heavy armour under the robes. Might surrender.'],
+  bugbear: ['bugbear', 'Huge, strong, and hits hard.'], odric: ['odric', 'High priest. His rite must not finish.'],
+  skeleton: ['skeleton', 'Undead: never breaks, never sleeps. Turn Undead drives it off.'], gecko: ['gecko', 'Chained to the pole: it reaches only inside the circle, for now.'],
+  zombie: ['zombie', 'Undead and slow: it always acts last.'], centipede: ['centipede', 'Its bite sickens: half speed, no fighting, until a camp.'],
+  locust: ['locust', 'Grey as the rock. Spits: save, or lose a round retching.'], lizardman: ['lizardman', 'Neutral. Guards the sword. Food might do it.'],
+};
 
 const $ = (s) => document.querySelector(s);
 const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html !== undefined) e.innerHTML = html; return e; };
@@ -18,6 +34,31 @@ export class UI {
     $('#atk-go').onclick = () => this.game?.confirmAttack();
     $('#atk-x').onclick = () => { if (this.game) { this.game.attackPlan = null; this.update(this.game); } };
     $('#restart').onclick = () => location.reload();
+    this.seen = new Set();
+  }
+
+  // A bestiary card for the first kind of monster in this fight not met before.
+  bestiary(g) {
+    const kinds = g.swarm ? ['bat'] : g.activeFoes().map((f) => f.kind);
+    const kind = kinds.find((k) => !this.seen.has(k));
+    if (!kind) return;
+    this.seen.add(kind);
+    const def = MONSTERS[kind], [pic, note] = kind === 'bat' ? ['bat', 'A shrieking swarm: -2 to hit, no casting. Wave a torch at it.'] : BEAST[kind] || [kind, ''];
+    const b = $('#bestiary');
+    b.innerHTML = `<img src="${portrait(pic)}" alt=""><div class="nm">${kind === 'bat' ? 'Bats' : def.name}</div>`
+      + (def ? `<div class="st">AC ${def.alwaysHit ? '—' : def.ac} · HD ${Math.floor(def.hd) || '½'}${def.hd % 1 > 0.05 && def.hd > 1 ? '+1' : ''} · MV ${def.mv * 15}' · ML ${def.ml}${def.undead ? ' · undead' : ''}</div>` : '')
+      + `<div class="nt">${note}</div>`;
+    b.classList.remove('show'); void b.offsetWidth; b.classList.add('show');
+    b.onclick = () => b.classList.remove('show');
+    clearTimeout(this.beastTimer);
+    this.beastTimer = setTimeout(() => b.classList.remove('show'), 7000);
+  }
+
+  // The end: the DM's tally (PLAN.md 5).
+  ending(g, t) {
+    $('#end .res').innerHTML = `<h2>${t.title}</h2><p>${t.text}</p><table>${t.rows.map(([a, b]) => `<tr><td>${a}</td><td>${b}</td></tr>`).join('')}</table>`
+      + `<div class="xp">${t.xp.toLocaleString('en-GB')} XP${t.survivors ? `: ${t.share.toLocaleString('en-GB')} each for ${t.survivors} survivor${t.survivors === 1 ? '' : 's'}` : ''}</div>`;
+    $('#end').classList.add('show');
   }
 
   // A banner across the top for a moment: an encounter starting.
@@ -28,10 +69,6 @@ export class UI {
   }
   // The last attack's roll, shown in the attack panel for a moment.
   lastRoll(r) { this.rolled = { ...r, at: performance.now() }; this.update(this.game); }
-  gameOver(g) {
-    $('#end .res').innerHTML = `<h2>The party has fallen</h2><p>${g.log.slice(-3).map((e) => e.text).join(' ')}</p>`;
-    $('#end').classList.add('show');
-  }
 
   attach(game) {
     this.game = game;
@@ -44,7 +81,10 @@ export class UI {
     $('#viewbtn').onclick = () => $('#toggles').classList.toggle('show');
     this.automap = new Automap($('#automap'), (x, z) => { game.camera.goal = [x, z]; });
     this.levelChanged(game);
-    // party cards
+    this.partyChanged(game);
+  }
+  // party cards, one per member (more when the recruits join)
+  partyChanged(game) {
     const cards = $('#cards');
     cards.textContent = '';
     this.cardEls = new Map();
@@ -75,7 +115,15 @@ export class UI {
   // Statuses as small chips on a card: what's on them, and for how long.
   chips(m) {
     const s = m.status, out = [];
+    if (m.petrified) out.push(['stone', 'stone']);
     if (s.slimed) out.push(['slime', `slime · ${s.slimed} round${s.slimed === 1 ? '' : 's'}`]);
+    if (s.paralysed) out.push(['bad', `paralysed · ${s.paralysed >= 10 ? `${Math.ceil(s.paralysed / 10)} turns` : `${Math.ceil(s.paralysed * 6)} rd`}`]);
+    if (s.held) out.push(['bad', `held · ${Math.ceil(s.held * 6)} rd`]);
+    if (s.poisoned) out.push(['slime', `poison · ${Math.ceil(s.poisoned / 10)} turns`]);
+    if (s.stricken) out.push(['bad', 'stricken: carried']);
+    if (s.sick) out.push(['bad', 'sick']);
+    if (s.retching) out.push(['bad', 'retching']);
+    if (s.bolted) out.push(['hid', 'bolted']);
     if (s.hidden) out.push(['hid', 'hidden']);
     if (s.shield) out.push(['mag', `shield · ${Math.ceil(s.shield * 6)} rd`]);
     if (s.protection) out.push(['gold', `protection · ${Math.ceil(s.protection * 6)} rd`]);
@@ -102,7 +150,11 @@ export class UI {
 
     // clock and where the party is
     const { turn, time } = clockText(g.clock), room = g.dungeon.roomOf(g.leader.tile);
-    $('#clock').innerHTML = `<div class="turn">Turn ${turn} <span>${time}</span></div><div class="where">${room ? (room.passage ? room.name : `${room.id} · ${room.name}`) : 'A passage'}</div>`;
+    const aim = g.state.sword ? 'Get out alive with the sword' : 'Find the Sword of the Sorcerer';
+    const gp = Math.floor(treasure.worth(g)), cn = treasure.weight(g), h = hum(g);
+    $('#clock').innerHTML = `<div class="turn">Turn ${turn} <span>${time}</span></div><div class="where">${room ? (room.passage ? room.name : `${room.id} · ${room.name}`) : 'A passage'}</div>`
+      + `<div class="goal">${aim}</div><div class="purse">${gp.toLocaleString('en-GB')} gp · ${g.rations} ration${g.rations === 1 ? '' : 's'}${g.keys.has('odric') ? ' · keys' : ''}${g.escort ? ` · ${g.escort.count} prisoners` : ''}${treasure.burdened(g) ? ` · <em>burdened, ${cn.toLocaleString('en-GB')} cn</em>` : ''}</div>`
+      + (h ? `<div class="hum">The sword hums${h.dist < 2 ? ' loudly' : ''}</div>` : '');
 
     // party cards: name, class, hit points, light and what's left of it, spare torches
     for (const m of g.party) {
@@ -115,7 +167,7 @@ export class UI {
       c.className = `card c-${m.id}${g.selected === m.id ? ' sel' : ''}${m.dead ? ' dead' : m.downed ? ' downed' : ''}${done ? ' done' : ''}`;
       const state = m.dead ? '<em>dead</em>' : m.downed ? `<em>downed · ${m.downed} round${m.downed === 1 ? '' : 's'}</em>`
         : enc ? `${m.moved ? '<s>move</s>' : 'move'} · ${m.acted ? '<s>act</s>' : 'act'}` : m.def.cls;
-      c.innerHTML = `<div class="nm"><span>${m.def.name}</span><i>${pos}</i></div><div class="rl">${state}</div>`
+      c.innerHTML = `<img class="pt" src="${portrait(m.id)}" alt=""><div class="nm"><span>${m.def.name}</span><i>${pos}</i></div><div class="rl">${state}</div>`
         + `<div class="hp"><b style="width:${Math.round(100 * Math.max(0, m.hp) / m.def.hp)}%"></b></div><div class="hpt">HP ${m.hp}/${m.maxHp}${m.diseased ? ' (diseased)' : ''} · AC ${m.def.ac} · ${m.def.missile.name} ${m.ammo}</div>`
         + `<div class="lt">${light}</div><div class="burn"><b style="width:${Math.round(burn * 100)}%"></b></div>`
         + `<div class="kit">${spare} torch${spare === 1 ? '' : 'es'}${m.def.kit.lantern ? ` · ${m.flasks} oil` : ''}${m.items.potion ? ` · ${m.items.potion} potion${m.items.potion === 1 ? '' : 's'}` : ''}`
@@ -123,6 +175,24 @@ export class UI {
         + (m.def.spells ? `<div class="kit">${m.memorised.length ? m.memorised.map((id) => `${SPELLS[id].icon} ${SPELLS[id].name}`).join(' · ') : '<em>no spells left</em>'}</div>` : '')
         + this.chips(m);
     }
+
+    // someone talking
+    const dl = $('#dialogue');
+    if (g.dialogue) {
+      const dg = g.dialogue, img = dl.querySelector('img');
+      img.className = dg.who ? '' : 'none';
+      if (dg.who) img.src = portrait(dg.who);
+      dl.querySelector('.nm').textContent = dg.name;
+      dl.querySelector('.tx').textContent = dg.text;
+      const opts = dl.querySelector('.opts');
+      opts.textContent = '';
+      dg.options.forEach((o, k) => {
+        const b = el('button', o.ok === false ? 'dis' : '', `<i>${k + 1}</i>${o.label}${o.hint ? `<span>${o.hint}</span>` : ''}`);
+        b.onclick = () => g.choose(k);
+        opts.appendChild(b);
+      });
+      dl.classList.add('show');
+    } else dl.classList.remove('show');
 
     // the spell waiting for a target
     const cp = $('#castprompt');
@@ -193,6 +263,8 @@ export class UI {
     } else if (goal >= 0 && g.known(goal) && TILE[g.dungeon.t[goal]].walk && !g.hiddenDoor(goal) && !g.busy && !g.memberAt(goal)) {
       lines.push('<div class="path none">No known way there</div>');
     }
+    const blk = g.scriptState.block;
+    if (blk?.left > 0) lines.push(`<div class="path none">The stone block shuts in ${blk.left} round${blk.left === 1 ? '' : 's'}</div>`);
     if (!lines.length && g.mode === 'encounter') lines.push(`<span class="hint">${g.enc?.phase === 'party' ? 'Tap a blue tile to move, a foe to attack. Space ends the round.' : 'The foes are acting…'}</span>`);
     // the surface is the tutorial (PLAN.md 6.3): say what the choices are
     if (!lines.length && g.L.id === 'surface' && g.mode === 'explore') {

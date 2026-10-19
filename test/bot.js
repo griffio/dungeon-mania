@@ -1,5 +1,6 @@
 import { Game } from '../src/game.js';
 import { TILE, T } from '../src/dungeon.js';
+import * as treasure from '../src/treasure.js';
 
 // A bot that plays the dungeon fairly, under fog, through the game's own actions: it walks to the
 // edge of what it has seen, opens doors (smashing locks), keeps a light burning, fights whatever
@@ -11,6 +12,17 @@ const ui = { update() {}, viewKey: null };
 const N8 = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
 const tick = () => new Promise((r) => setImmediate(r));
 
+// Answer whoever is talking, the way a sensible party would: feed and recruit Belisarius, take
+// Rosa along, buy off the Arch-deaconess if the purse allows (or back away), bribe the lizardman,
+// don't trouble the oracle, and head home when asked.
+const ANSWERS = [/^Welcome/, /^Give him some food$/, /^Ask him to come/, /^Ask her to come/, /^Offer him food$/, /^Offer 100 gp/, /^Head home/, /^Go on/, /^Back away/, /^Back off/, /^Leave him/, /^Ask nothing/];
+export function answer(g) {
+  const opts = g.dialogue.options;
+  for (const re of ANSWERS) { const k = opts.findIndex((o) => re.test(o.label) && o.ok !== false); if (k >= 0) { g.choose(k); return; } }
+  if (!opts.length) { g.dialogue = null; return; }
+  g.choose(Math.max(0, opts.findIndex((o) => o.ok !== false)));
+}
+
 async function settle(g) {
   for (let k = 0; k < 20000 && g.busy; k++) { g.update(0.05); await tick(); }
   g.update(0.05); await tick();
@@ -21,6 +33,7 @@ async function settle(g) {
 async function fight(g) {
   for (let guard = 0; guard < 3000 && g.mode === 'encounter'; guard++) {
     await settle(g);
+    if (g.dialogue) { answer(g); continue; }
     if (g.mode !== 'encounter') break;
     if (g.enc.phase !== 'party') continue;
     const m = g.ableParty().find((x) => !x.acted);
@@ -68,6 +81,7 @@ async function fight(g) {
 // The surface first: deal with the hobgoblins, fix the rope, climb down.
 async function descend(g) {
   for (let k = 0; k < 50 && g.L.id === 'surface'; k++) {
+    if (g.dialogue) { answer(g); continue; }
     if (g.mode === 'encounter') { await fight(g); continue; }
     const hob = g.foes.find((f) => f.alive);
     if (hob) { g.tap(hob.tile); await settle(g); continue; }
@@ -98,8 +112,31 @@ async function tend(g) {
   return false;
 }
 
+// The little jobs a player does on the way: search the bodies, take what's worth carrying, deal
+// with chests, smash urns, cut Rosa free, talk to Belisarius, bind the priests who surrendered,
+// and take the sword. Returns true if it did something.
+const tried = new Map();
+async function chores(g) {
+  const ids = g.actions().filter((a) => a.ok).map((a) => a.id), once = (k, n = 1) => { const c = tried.get(k) || 0; tried.set(k, c + 1); return c < n; };
+  for (const id of ['sword', 'rosa', 'loot', 'bind', 'hemisphere', 'urn', 'drop']) if (ids.includes(id)) { g.act(id); await settle(g); return true; }
+  if (ids.includes('talk') && g.actions().find((a) => a.id === 'talk').label === 'Talk to the stranger') { g.act('talk'); return true; }
+  // coins only if they can be carried without slowing down
+  for (const p of treasure.heapsNear(g)) if (treasure.weight(g) + p.n <= treasure.capacity(g)) { g.act(`heap:${p.kind}`); return true; }
+  const c = g.actions().find((a) => a.id === 'chest');
+  if (c) {
+    const key = c.label;
+    if (ids.includes('ctraps') && once(`check ${key}`, 2)) { g.act('ctraps'); return true; }
+    if (ids.includes('disarm') && once(`disarm ${key}`, 4)) { g.act('disarm'); return true; }
+    if (ids.includes('chest')) { g.act('chest'); return true; }
+    if (ids.includes('cpick') && once(`pick ${key}`, 3)) { g.act('cpick'); return true; }
+    if (ids.includes('csmash')) { g.act('csmash'); return true; }
+  }
+  return false;
+}
+
 export async function explore(seed) {
   const g = new Game({ ui, seed });
+  globalThis.botGame = g; // for poking at a stuck run
   await descend(g);
   const d = g.dungeon;
   const failed = new Set(), searchedAt = [];
@@ -113,9 +150,12 @@ export async function explore(seed) {
     }
   };
   for (let step = 0; step < 1500; step++) {
+    globalThis.botSteps = step;
+    if (g.dialogue) { answer(g); continue; }
     if (g.mode === 'encounter') { await fight(g); continue; }
     if (g.mode !== 'explore') break;
     keepLit();
+    if (await chores(g)) continue;
     // a door the party is standing at: open it, or deal with its lock
     const door = g.activeDoor();
     if (door && !door.open) {
@@ -130,6 +170,16 @@ export async function explore(seed) {
     if (g.actions().some((a) => a.id === 'lever')) { g.act('lever'); continue; }
     // look after the party: rest when allowed, and go back to the healing pool when hurt
     if (await tend(g)) continue;
+    // prisoners seen through the bars: go and open their gate
+    const cell = g.cells.find((c) => !c.freed && g.explored[c.i] && (g.searches.get(`cell${c.i}`) || 0) < 4);
+    if (cell) {
+      g.searches.set(`cell${cell.i}`, (g.searches.get(`cell${cell.i}`) || 0) + 1);
+      const p = g.plan(cell.i);
+      if (p && !p.blocked) { g.go(p); await settle(g); }
+      const door = d.doors.get(cell.i);
+      if (!door.open && g.adjacentTo(cell.i).length) { if (door.key && !g.keys.has('odric')) g.act('smash'); else g.act('open'); await settle(g); }
+      continue;
+    }
     // the frontier: seen ground with unseen ground beside it
     const frontier = [];
     for (let i = 0; i < d.n; i++) {
@@ -155,6 +205,14 @@ export async function explore(seed) {
       moved = true; break;
     }
     if (moved) continue;
+    // a room seen only from its doorway: step inside
+    const unseen = d.rooms.find((r) => !r.passage && !g.visited.has(r.id) && !failed.has(`room${r.id}`) && r.tiles.some((i) => g.explored[i]));
+    if (unseen) {
+      failed.add(`room${unseen.id}`);
+      const p = unseen.tiles.filter((i) => g.explored[i] && TILE[d.t[i]].walk && d.t[i] !== T.PIT).map((i) => g.plan(i)).find((q) => q && !q.blocked && q.path.length > 1);
+      if (p) { g.go(p); await settle(g); }
+      continue;
+    }
     // nothing left to walk to: search somewhere not yet searched, three times
     const spot = [];
     for (let i = 0; i < d.n; i++) {
@@ -174,6 +232,30 @@ export async function explore(seed) {
     const found = g.hidden().length;
     for (let k = 0; k < 3 && g.hidden().length === found && g.mode === 'explore'; k++) { g.act('search'); await settle(g); }
     if (g.hidden().length < found) failed.clear();
+  }
+  return g;
+}
+
+// The whole adventure (M5): explore, then take the sword (buying off the lizardman), walk to the
+// nearer way out, climb up, and head home.
+export async function crawl(seed) {
+  const g = await explore(seed);
+  for (let step = 0; step < 400 && g.mode !== 'over'; step++) {
+    if (g.dialogue) { answer(g); continue; }
+    if (g.mode === 'encounter') { await fight(g); continue; }
+    if (g.mode !== 'explore') break;
+    const ids = g.actions().filter((a) => a.ok).map((a) => a.id);
+    if (ids.includes('sword')) { g.act('sword'); continue; }
+    if (g.L.id === 'surface') { if (ids.includes('leave')) g.act('leave'); continue; }
+    if (g.state.sword && ids.includes('climbup')) { g.act('climbup'); continue; }
+    if (g.state.sword && ids.includes('stairsup')) { g.act('stairsup'); continue; }
+    const d = g.dungeon, around = ([x, y]) => [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]].map(([a, b]) => d.idx(a, b));
+    const goals = g.state.sword
+      ? d.links.filter((l) => l.id === 'entrance' || l.kind === 'stairs').flatMap((l) => around(d.xy(l.a)))
+      : around([13, 32]);
+    const plans = goals.map((i) => g.plan(i)).filter((p) => p && !p.blocked && (p.path.length > 1 || p.door >= 0)).sort((a, b) => a.cost - b.cost);
+    if (!plans.length) { g.act('search'); await settle(g); continue; }
+    g.go(plans[0]); await settle(g);
   }
   return g;
 }

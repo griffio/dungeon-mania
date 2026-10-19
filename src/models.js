@@ -13,8 +13,10 @@ function drawLying(sets, def, L, p) {
   const W = (lx, ly, lz) => [p.x + lx * cy - lz * sy, p.y + ly, p.z + lx * sy + lz * cy];
   const at = (set, v, sx, sh, sz, col, mat = 0, roll = 0) => set.add(v[0], v[1], v[2], sx, sh, sz, p.yaw, col, mat, 0, 0, roll);
   at(cyl, W(0, 0, 0), 0.7, 0.05, 0.7, p.foe ? FOE_RIM : BRASS, 8);
-  if (def.rig === 'rat') {
-    at(sph, W(0, 0.05, 0), 0.3, 0.16, 0.5, L.body);
+  if (def.rig !== 'biped') {
+    // a beast on its side: rat, gecko, centipede, locust
+    const k = def.scale || 1;
+    at(sph, W(0, 0.05, 0), 0.3 * k, 0.16, 0.5 * k, L.body);
     return null;
   }
   // body along the ground, head at the far end, a dark pool beneath (not for a sleeper)
@@ -69,10 +71,17 @@ const HIP = 0.5, SHOULDER = 0.88, LEG = 0.44, ARM = 0.36;
 //   lean: [x, z] world offset for the flame (the secret-door hint), selected, leader,
 //   foe (a red rim instead of brass), flash (0..1, just hit), lying (dead or downed).
 // Draws into sets {box, cyl, sph, cone}; returns the flame's world position, or null.
+//   hidden (in the shadows), robed (the cult's robes on), stone (petrified), frozen (held or
+//   paralysed: no breath, no sway; paralysis frosts the paint).
 export function drawHero(sets, def, p, t) {
-  const { box, cyl, sph, cone } = sets, G = def.gear;
+  const { box, cyl, sph, cone } = sets;
+  let G = def.gear;
   let L = p.flash ? tint(def.look, p.flash) : def.look;
   if (p.hidden) L = Object.fromEntries(Object.entries(L).map(([k, c]) => [k, c.map((v) => v * 0.3)])); // in the shadows
+  if (p.robed) { L = { ...L, body: [0.12, 0.32, 0.14], trim: [0.8, 0.8, 0.74] }; G = { ...G, robe: true, hood: true, helm: false, hat: false }; }
+  if (p.stone) L = Object.fromEntries(Object.entries(L).map(([k]) => [k, STONE]));
+  else if (p.frost) L = Object.fromEntries(Object.entries(L).map(([k, c]) => [k, c.map((v, n) => v * 0.5 + FROST[n] * 0.5)]));
+  if (p.stone || p.frozen) p = { ...p, moving: 0, walk: 0, breath: 0 };
   if (p.lying) return drawLying(sets, def, L, p);
   const cy = Math.cos(p.yaw), sy = Math.sin(p.yaw), k = def.scale || 1; // goblins are small
   // local (right, up, forward) -> world; local +z is the way the figure faces
@@ -94,12 +103,13 @@ export function drawHero(sets, def, p, t) {
 
   const mv = p.moving, sw = Math.sin(p.walk) * 0.55 * mv;
   const bob = Math.abs(Math.sin(p.walk)) * 0.035 * mv;
-  const breath = Math.sin(t * 2.1 + p.breath) * 0.012 * (1 - mv);
-  const metal = def.cls === 'Fighter' || def.cls === 'Cleric';
-  const hunch = G.hunch ? 0.35 : 0; // orcs stoop forward
-  const bodyMat = metal ? 8 : 0;
+  const breath = p.stone || p.frozen ? 0 : Math.sin(t * 2.1 + p.breath) * 0.012 * (1 - mv);
+  const metal = def.cls === 'Fighter' || def.cls === 'Cleric' || G.metal;
+  const hunch = G.crouch ? 0.6 : G.hunch ? 0.35 : 0; // orcs stoop forward; the ghoul crouches low
+  const bodyMat = p.stone ? 5 : metal ? 8 : 0;
   const y0 = 0.062; // top of the base
-  const hip = y0 + HIP - 0.06 + bob, sh = y0 + SHOULDER - 0.06 + bob + breath;
+  const low = G.crouch ? 0.16 : 0;
+  const hip = y0 + HIP - 0.06 + bob - low, sh = y0 + SHOULDER - 0.06 + bob + breath - low * 1.4;
 
   // legs, or a robe that sways as she walks
   if (G.robe) {
@@ -126,15 +136,25 @@ export function drawHero(sets, def, p, t) {
     add(cyl, W(0, hy + 0.17, 0), 0.4, 0.02, 0.4, L.body);
     add(cone, W(0, hy + 0.18, 0), 0.22, 0.34, 0.22, L.body, 0, 0, 0, -0.2); // tipped back
   } else if (G.hood) {
-    add(sph, W(0, hy + 0.02, -0.02), 0.28, 0.28, 0.28, L.trim);
-  } else {
+    add(sph, W(0, hy + 0.02, -0.02), 0.28, 0.28, 0.28, G.robe ? L.body : L.trim);
+  } else if (!G.bald) {
     add(sph, W(0, hy + 0.12, -0.01), 0.25, 0.16, 0.25, L.hair);
   }
+  // a lizardman's snout and tail
+  if (G.snout) add(box, W(0, hy - 0.03, hz + 0.18), 0.13, 0.1, 0.2, L.skin);
+  if (G.tail) {
+    const sway = Math.sin(t * 1.7 + p.breath) * 0.25 + sw * 0.3;
+    add(box, W(0, hip - 0.12, -0.24), 0.1, 0.08, 0.3, L.body, 0, 0, 0, 0, sway * 0.4);
+    add(box, W(Math.sin(sway) * 0.08, hip - 0.24, -0.5), 0.06, 0.05, 0.3, L.body, 0, 0, 0, 0, sway);
+  }
+  if (G.keys) add(cyl, W(0.17, hip - 0.1, 0.04), 0.1, 0.02, 0.1, STEEL, 8, 0, Math.PI / 2, 0);
 
   // arms: the right one holds the light or the weapon, the left the shield
   const carries = p.light === 'torch' || p.light === 'lantern' || p.light === 'shut';
   let flame = null;
-  const rSwing = carries ? -1.15 : sw * 0.8;
+  // a zombie gropes forward with both arms; a ghoul reaches with its claws
+  const reach = G.reach ? -1.35 + Math.sin(t * 2 + p.breath) * 0.08 : G.claws ? -0.9 + sw * 0.3 : null;
+  const rSwing = carries ? -1.15 : reach ?? sw * 0.8;
   const rEnd = limb(box, 0.19, sh, ARM, 0.085, rSwing, metal ? STEEL : L.body, bodyMat);
   const hand = [rEnd[0], rEnd[1], rEnd[2]];
   if (carries) {
@@ -155,6 +175,12 @@ export function drawHero(sets, def, p, t) {
       sph.add(at[0], at[1], at[2], 0.1, 0.1, 0.1, 0, lit ? LANTERN : [0.05, 0.04, 0.03], lit ? 4 : 0, lit ? 2.2 : 0);
       if (lit) flame = [at[0], at[1] + 0.06, at[2]];
     }
+  } else if (G.claws) {
+    for (const sx of [-0.03, 0, 0.03]) add(cone, W(hand[0] + sx, hand[1] - 0.06, hand[2] + 0.03), 0.025, 0.09, 0.025, [0.75, 0.72, 0.6], 0, 0, -0.6, 0);
+  } else if (G.club) {
+    const r = 0.5 - sw * 0.3, len = 0.5;
+    add(cyl, W(hand[0], hand[1] - 0.02, hand[2]), 0.07, len, 0.07, WOOD, 7, 0, 0, r);
+    add(sph, W(hand[0], hand[1] - 0.02 + Math.cos(r) * len - 0.06, hand[2] + Math.sin(r) * len - 0.04), 0.15, 0.17, 0.15, WOOD, 7);
   } else if (G.axe) {
     const r = 0.6 - sw * 0.3, len = 0.42;
     add(box, W(hand[0], hand[1] - 0.04, hand[2]), 0.035, len, 0.035, WOOD, 0, 0, 0, r);
@@ -166,7 +192,7 @@ export function drawHero(sets, def, p, t) {
     if (G.mace) add(sph, W(hand[0], hand[1] - 0.02 + Math.cos(r) * len - 0.05, hand[2] + Math.sin(r) * len - 0.05), 0.11, 0.11, 0.11, STEEL, 8);
     if (G.sword) add(box, W(hand[0], hand[1] + 0.02, hand[2] + 0.01), 0.04, 0.025, 0.16, STEEL, 8, 0, 0, r); // crossguard
   }
-  limb(box, -0.19, sh, ARM, 0.085, -sw * 0.8, metal ? STEEL : L.body, bodyMat);
+  limb(box, -0.19, sh, ARM, 0.085, reach ?? -sw * 0.8, metal ? STEEL : L.body, bodyMat);
   // a torch takes a hand: a fighter carrying one gives up his shield (PLAN.md 3.5)
   if (G.shield && !(carries && def.cls === 'Fighter')) {
     if (def.cls === 'Cleric') {
@@ -178,4 +204,134 @@ export function drawHero(sets, def, p, t) {
     add(sph, W(-0.29, sh - 0.3, 0.02), 0.06, 0.06, 0.06, BRASS, 8);
   }
   return flame;
+}
+
+const STONE = [0.42, 0.41, 0.39], FROST = [0.62, 0.78, 0.95], EYE = [0.4, 1, 0.5];
+// Placement helpers for a figure at pose p: local (right, up, forward) to world, scaled.
+function place(sets, def, p) {
+  const cy = Math.cos(p.yaw), sy = Math.sin(p.yaw), k = def.scale || 1;
+  const W = (lx, ly, lz) => [p.x + (lx * cy - lz * sy) * k, p.y + ly * k, p.z + (lx * sy + lz * cy) * k];
+  const add = (set, at, sx, sh, sz, col, mat = 0, emis = 0, pitch = 0, roll = 0, yawOff = 0) =>
+    set.add(at[0], at[1], at[2], sx * k, sh * k, sz * k, p.yaw + yawOff, col, mat, emis, pitch, roll);
+  const base = () => {
+    add(sets.cyl, W(0, 0, 0), 0.7, 0.05, 0.7, FOE_RIM, 8, p.selected ? 0.9 : 0);
+    add(sets.cyl, W(0, 0.05, 0), 0.64, 0.012, 0.64, FELT);
+  };
+  return { W, add, base, k };
+}
+
+// A skeleton (PLAN.md 2): thin bones, a ribcage, a grinning skull with a green glint in its eyes,
+// a scimitar. Destroyed, it collapses into a pile of bones.
+export function drawSkeleton(sets, def, p, t) {
+  const { box, sph } = sets, L = p.flash ? tint(def.look, p.flash) : def.look;
+  const { W, add, base } = place(sets, def, p);
+  base();
+  if (p.lying) {
+    for (let n = 0; n < 7; n++) {
+      const a = n * 2.1 + p.breath, r = 0.08 + (n % 3) * 0.07;
+      add(box, W(Math.cos(a) * r, 0.07, Math.sin(a) * r), 0.03, 0.03, 0.22, L.body, 0, 0, 0, 0, a);
+    }
+    add(sph, W(0.1, 0.12, 0.05), 0.16, 0.15, 0.16, L.body);
+    return null;
+  }
+  const mv = p.moving, sw = Math.sin(p.walk) * 0.5 * mv, bob = Math.abs(Math.sin(p.walk)) * 0.03 * mv;
+  const hip = 0.5 + bob, sh = 0.9 + bob;
+  const limb = (jx, jy, len, swing) => { add(box, W(jx, jy - Math.cos(swing) * len, -Math.sin(swing) * len), 0.035, len, 0.035, L.body, 0, 0, 0, swing); return [jx, jy - Math.cos(swing) * len * 2, -Math.sin(swing) * len * 2]; };
+  limb(-0.07, hip, 0.22, -sw); limb(0.07, hip, 0.22, sw);
+  add(box, W(0, hip - 0.02, 0), 0.2, 0.06, 0.1, L.trim);              // pelvis
+  add(box, W(0, hip, -0.02), 0.04, sh - hip, 0.04, L.body);           // spine
+  for (let r = 0; r < 3; r++) add(box, W(0, hip + 0.16 + r * 0.08, 0), 0.24 - r * 0.02, 0.025, 0.14, L.body);
+  add(box, W(0, sh, 0), 0.32, 0.03, 0.06, L.body);                    // collarbones
+  add(sph, W(0, sh + 0.16, 0.01), 0.2, 0.22, 0.21, L.body);
+  for (const ex of [-0.045, 0.045]) add(sph, W(ex, sh + 0.17, 0.09), 0.035, 0.035, 0.02, EYE, 4, 2.5);
+  const hand = limb(0.17, sh, 0.18, -0.5 + sw * 0.6);
+  limb(-0.17, sh, 0.18, -sw * 0.6);
+  // the scimitar, a little curved
+  add(box, W(hand[0], hand[1] + 0.12, hand[2] + 0.1), 0.015, 0.3, 0.05, [0.5, 0.5, 0.52], 8, 0, 0.5, 0);
+  add(box, W(hand[0], hand[1] + 0.32, hand[2] + 0.24), 0.015, 0.16, 0.04, [0.5, 0.5, 0.52], 8, 0, 0.95, 0);
+  return null;
+}
+
+// A rockman (PLAN.md 2): boulders stacked into a stocky man, crystal eyes glinting. Broken, it is
+// a heap of rubble.
+export function drawRockman(sets, def, p, t) {
+  const { sph } = sets, L = p.flash ? tint(def.look, p.flash) : def.look;
+  const { W, add, base } = place(sets, def, p);
+  base();
+  if (p.lying) {
+    for (let n = 0; n < 6; n++) { const a = n * 1.9 + p.breath; add(sph, W(Math.cos(a) * 0.2, 0.1, Math.sin(a) * 0.2), 0.2, 0.15, 0.18, n % 2 ? L.body : L.trim, 5); }
+    return null;
+  }
+  const mv = p.moving, sw = Math.sin(p.walk) * 0.4 * mv, bob = Math.abs(Math.sin(p.walk)) * 0.04 * mv;
+  for (const [sx, ph] of [[-0.13, 0], [0.13, Math.PI]]) add(sph, W(sx, 0.22 + bob, Math.sin(p.walk + ph) * 0.08 * mv), 0.2, 0.32, 0.22, L.trim, 5);
+  add(sph, W(0, 0.62 + bob, 0), 0.56, 0.5, 0.42, L.body, 5);
+  add(sph, W(0, 1.0 + bob, 0.04), 0.3, 0.27, 0.28, L.trim, 5);
+  for (const ex of [-0.06, 0.06]) add(sph, W(ex, 1.02 + bob, 0.16), 0.04, 0.03, 0.02, def.look.eye, 4, 2.5);
+  for (const [sx, s2] of [[-0.34, -sw], [0.34, sw]]) {
+    add(sph, W(sx, 0.62 + bob, s2 * 0.2), 0.18, 0.3, 0.18, L.body, 5);
+    add(sph, W(sx * 1.05, 0.36 + bob, 0.05 + s2 * 0.25), 0.2, 0.18, 0.2, L.trim, 5);
+  }
+  return null;
+}
+
+// The giant gecko (PLAN.md 2, quadruped): long and low, splayed legs, a thick tail; chained to the
+// pole until Odric lets it go.
+export function drawLizard(sets, def, p, t) {
+  const { box, sph } = sets, L = p.flash ? tint(def.look, p.flash) : def.look;
+  if (p.lying) return drawLying(sets, def, L, p);
+  const { W, add, base } = place(sets, def, p);
+  base();
+  const run = Math.sin(p.walk * 1.4) * p.moving, sway = Math.sin(t * 1.3 + p.breath) * 0.15 + run * 0.3;
+  add(sph, W(0, 0.12, 0), 0.32, 0.14, 0.52, L.body);
+  add(sph, W(0, 0.14, 0.32), 0.2, 0.12, 0.22, L.body);
+  for (const ex of [-0.07, 0.07]) add(sph, W(ex, 0.2, 0.38), 0.05, 0.05, 0.05, L.trim);
+  for (const [sx, sz, ph] of [[-1, 0.16, 0], [1, 0.16, Math.PI], [-1, -0.16, Math.PI], [1, -0.16, 0]]) {
+    add(box, W(sx * 0.2, 0.08, sz + Math.sin(p.walk * 1.4 + ph) * 0.05 * p.moving), 0.16, 0.04, 0.05, L.body, 0, 0, 0, 0, sx * 0.4);
+  }
+  add(box, W(Math.sin(sway) * 0.05, 0.1, -0.38), 0.12, 0.08, 0.3, L.body, 0, 0, 0, 0, sway);
+  add(box, W(Math.sin(sway) * 0.15, 0.08, -0.62), 0.07, 0.05, 0.28, L.trim, 0, 0, 0, 0, sway * 1.6);
+  // the chain, from its collar to the foot of the pole
+  if (p.chainTo) {
+    const a = W(0, 0.18, 0.24);
+    for (let n = 0; n <= 8; n++) {
+      const f = n / 8, x = a[0] + (p.chainTo[0] - a[0]) * f, z = a[2] + (p.chainTo[1] - a[2]) * f, y = a[1] * (1 - f) + 0.04 + Math.sin(f * Math.PI) * -0.02;
+      sets.box.add(x, y, z, 0.05, 0.03, 0.05, Math.atan2(p.chainTo[0] - a[0], p.chainTo[1] - a[2]), STEEL, 8);
+    }
+  }
+  return null;
+}
+
+// The giant centipede (PLAN.md 2, segmented): a chain of segments, a leg wave travelling down them.
+export function drawCentipede(sets, def, p, t) {
+  const { box, sph } = sets, L = p.flash ? tint(def.look, p.flash) : def.look;
+  if (p.lying) return drawLying(sets, def, L, p);
+  const { W, add, base } = place(sets, def, p);
+  base();
+  for (let n = 0; n < 9; n++) {
+    const z = 0.32 - n * 0.08, x = Math.sin(t * 4 * (0.3 + p.moving) - n * 0.7) * 0.05;
+    add(sph, W(x, 0.07, z), n ? 0.1 : 0.12, 0.06, 0.1, n % 2 ? L.trim : L.body);
+    const leg = Math.sin(t * 12 * (0.2 + p.moving) - n) * 0.03;
+    for (const side of [-1, 1]) add(box, W(x + side * 0.08, 0.04, z + leg * side), 0.08, 0.012, 0.012, L.trim, 0, 0, 0, 0, side * 0.3);
+  }
+  for (const side of [-1, 1]) add(box, W(side * 0.04, 0.09, 0.42), 0.01, 0.01, 0.14, L.trim, 0, 0, 0, 0, side * 0.4);
+  return null;
+}
+
+// A cave locust (PLAN.md 2, insect): grey as the rock, with great hind legs; it hops when it moves.
+export function drawLocust(sets, def, p, t) {
+  const { box, sph } = sets, L = p.flash ? tint(def.look, p.flash) : def.look;
+  if (p.lying) return drawLying(sets, def, L, p);
+  const { W, add, base } = place(sets, def, p);
+  base();
+  const hop = Math.abs(Math.sin(p.walk * 0.8)) * 0.25 * p.moving;
+  add(sph, W(0, 0.2 + hop, -0.04), 0.22, 0.18, 0.46, L.body);
+  add(sph, W(0, 0.26 + hop, 0.24), 0.16, 0.17, 0.15, L.body);
+  for (const ex of [-0.06, 0.06]) add(sph, W(ex, 0.3 + hop, 0.3), 0.04, 0.04, 0.03, [0.05, 0.05, 0.04]);
+  for (const side of [-1, 1]) {
+    add(box, W(side * 0.12, 0.28 + hop, -0.12), 0.04, 0.05, 0.34, L.trim, 0, 0, 0.5, 0);   // thigh, up and back
+    add(box, W(side * 0.13, 0.12 + hop * 0.5, -0.26), 0.03, 0.03, 0.3, L.trim, 0, 0, -0.6, 0); // shin, down
+    add(box, W(side * 0.1, 0.08 + hop * 0.5, 0.12), 0.1, 0.02, 0.02, L.trim, 0, 0, 0, side * 0.6);
+    add(box, W(side * 0.04, 0.38 + hop, 0.4), 0.01, 0.01, 0.24, L.trim, 0, 0, -0.5, side * 0.3);
+  }
+  return null;
 }

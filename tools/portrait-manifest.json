@@ -1,0 +1,33 @@
+{
+ "style": "Painted fantasy illustration in the manner of early-1980s fantasy role-playing book art: gouache and ink on paper, rich but slightly muted colours, confident brushwork, a little paper grain. Lit by warm torchlight from one side against a deep dark dungeon background that fades to near black at the edges. Square composition. No text, no lettering, no border, no frame, no watermark.",
+ "portrait": "Head-and-shoulders character portrait, the face clearly visible and looking slightly off to one side, centred in the square.",
+ "creature": "A single creature shown whole or nearly whole, centred, in a three-quarter view, as a bestiary illustration.",
+ "items": [
+  { "id": "brannoc", "kind": "portrait", "prompt": "Brannoc, a broad-shouldered human fighter in his thirties: steel plate armour with a deep red tabard edge, an open-faced steel helm with a red crest, short dark hair, a scarred weathered face and a steady, serious gaze." },
+  { "id": "ysolde", "kind": "portrait", "prompt": "Ysolde, a young human magic-user woman: a deep indigo robe trimmed with dull gold, a tall pointed hat of the same cloth tipped back, long auburn hair, sharp intelligent eyes, a faint glow of magic at her fingertips." },
+  { "id": "aldwin", "kind": "portrait", "prompt": "Aldwin, a middle-aged human cleric: chainmail under a pale grey-white tabard, short grey hair and beard, a calm kindly face, a plain silver holy symbol on a cord at his chest." },
+  { "id": "fennick", "kind": "portrait", "prompt": "Fennick, a lean young human thief: dark brown leather armour, a dark green hood half pulled up, quick watchful eyes, a sly half smile." },
+  { "id": "belisarius", "kind": "portrait", "prompt": "Belisarius, a thin starving man in his forties: hollow cheeks, unkempt brown hair and stubble, a torn grey travelling cloak, nervous wheedling eyes, crouched as if hiding." },
+  { "id": "rosa", "kind": "portrait", "prompt": "Rosa Dobbit, a plucky halfling woman fighter: curly brown hair, rosy cheeks, a bruised but defiant face, a plain padded jerkin, rope marks on her wrists." },
+  { "id": "odric", "kind": "portrait", "prompt": "Odric, high priest of a sinister cult: a sleek silken man with a thin smile and cold eyes, shaven head, rich green and white vestments embroidered with a coiled serpent, a heavy ring of iron keys at his belt." },
+  { "id": "archdeaconess", "kind": "portrait", "prompt": "The Arch-deaconess of Tranfax, a cold imperious priestess in her fifties: dark plate armour under a black and crimson surcoat, iron-grey hair pulled back severely, a hard commanding stare." },
+  { "id": "kithar", "kind": "portrait", "prompt": "Kithar, a proud young underpriest of the cult: green and white robes, a shaven head, a haughty sneer, holding a polished silver hemisphere." },
+  { "id": "merchant", "kind": "portrait", "prompt": "A plump middle-aged merchant held prisoner: once-fine clothes now dirty and torn, a fussy worried face with a little moustache, clutching the bars of a cell." },
+  { "id": "hobgoblin", "kind": "creature", "prompt": "A hobgoblin: a burly man-sized humanoid with rust-orange skin, small tusks, a crude iron sword and a battered round shield." },
+  { "id": "orc", "kind": "creature", "prompt": "An orc: a stooped, muscular humanoid with dark green skin, a piggish face with tusks, ragged leather armour and a notched hand axe." },
+  { "id": "rat", "kind": "creature", "prompt": "A giant rat the size of a dog: matted dark brown fur, a long naked tail, yellow teeth bared, among rubbish." },
+  { "id": "bat", "kind": "creature", "prompt": "A swirling swarm of small brown bats bursting out of a dark rock tunnel." },
+  { "id": "slime", "kind": "creature", "prompt": "A glistening sheet of bright green slime clinging to a rough stone wall high up near the ceiling, a drip forming at its lower edge." },
+  { "id": "goblin", "kind": "creature", "prompt": "A goblin: a small wiry humanoid with sallow green-grey skin, big ears, a wide mouth of sharp teeth and a rusty dagger." },
+  { "id": "ghoul", "kind": "creature", "prompt": "A ghoul: a gaunt grey corpse-like humanoid crouched low, long clawed fingers, sunken glowing eyes and a mouth of pointed teeth." },
+  { "id": "rockman", "kind": "creature", "prompt": "A rockman: a stocky humanoid made of stacked rough grey boulders, with glinting crystal eyes and heavy stone fists." },
+  { "id": "underpriest", "kind": "creature", "prompt": "A cult underpriest in green and white robes and a hood, kneeling at prayer candles, a mace at his belt." },
+  { "id": "bugbear", "kind": "creature", "prompt": "A bugbear: a huge hairy goblin-kin, seven feet tall, with a bear-like snout, brown fur and a big spiked club." },
+  { "id": "skeleton", "kind": "creature", "prompt": "An animated human skeleton holding a curved scimitar, yellowed bones, empty eye sockets lit by a faint green glow." },
+  { "id": "gecko", "kind": "creature", "prompt": "A giant gecko as long as a horse, mottled green and yellow skin, wide clinging toes, a heavy chain on its neck." },
+  { "id": "zombie", "kind": "creature", "prompt": "A shambling zombie in rotting peasant clothes, grey flesh, arms reaching forward, a vacant stare." },
+  { "id": "centipede", "kind": "creature", "prompt": "A giant centipede a foot long, glossy red-brown segments, many legs, curled between old wooden chests." },
+  { "id": "locust", "kind": "creature", "prompt": "A cave locust: a grasshopper-like insect as big as a dog, pale grey-brown chitin that blends into cave rock, long jumping legs." },
+  { "id": "lizardman", "kind": "creature", "prompt": "A lizardman: a scaly green reptilian humanoid with a long tail, sitting on a rock in a flooded cellar, a shaft of sunlight behind it, holding a short sword." }
+ ]
+}

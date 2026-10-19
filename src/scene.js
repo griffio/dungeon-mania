@@ -104,7 +104,13 @@ export class SceneBuilder {
         box.add(x + 0.95, 0, cz, 0.1, 1.4, 0.8, 0, [0.9, 0.82, 0.62], 4, 0.6);
       }
     }
-    for (const p of d.props) this.addProp(p);
+    let urn = 0;
+    for (const p of d.props) {
+      // room 11's urns go one by one as they're smashed; 21's statue goes with the Arch-deaconess
+      if (p.kind === 'urn' && urn++ >= (this.state.urns ?? 6)) continue;
+      if (p.kind === 'statue' && p.room === '21' && this.state.statueGone) continue;
+      this.addProp(p);
+    }
     // the lever under room 8's bed, once found
     const lever = [...d.doors.values()].find((x) => x.lever >= 0);
     if (lever && state.leverFound) {
@@ -299,7 +305,13 @@ export class SceneBuilder {
       case 'rock': sph.add(x, -0.25, z, p.w, p.h + 0.25, p.d, yaw, jitter(C.block, hash2(x * 10, z * 10)), 5); break;
       case 'curtain': B(C.red, 0); break;
       case 'corpse': B([0.2, 0.2, 0.22], 8); break;
-      case 'chest': B(p.room === '14' ? [0.3, 0.14, 0.06] : C.wood); break;
+      case 'chest': {
+        // an opened chest shows its lid thrown back
+        const col = p.room === '14' ? [0.3, 0.14, 0.06] : C.wood, open = this.state.openChests?.has(`${x},${z}`);
+        box.add(x, 0, z, p.w, p.h * (open ? 0.85 : 1), p.d, yaw, col, 7);
+        if (open) box.add(x, p.h * 0.85, z - p.d * 0.5, p.w, p.d * 0.9, 0.04, yaw, col, 7, 0, 0.3, 0);
+        break;
+      }
       case 'bundles': B(C.cloth, 0); break;
       case 'bedroll': B([0.2, 0.15, 0.08], 0); break;
       case 'drum': cyl.add(x, 0, z, p.w, p.h, p.d, yaw, jitter(C.ruin, x), 1, 0, Math.PI / 2, 0); break;

@@ -5,10 +5,20 @@
 //   search(g, s)          the party searched
 //   broke(g, s)           the group's morale broke; return true if the script handled it
 //   actions(g, s)         extra buttons for the action bar
+//   start(g, s, group)    an encounter has started (or a group joined one)
+//   round(g, s)           an encounter round has ended
+//   partyPhase(g, s)      the party's phase is starting
+//   ended(g, s)           an encounter is over
+//   killed(g, s, u)       a denizen has died;  downed(g, s, m)  a hero has fallen
+//   opened(g, s, door)    a door was opened (forced, unlocked or smashed)
 // level: the level the script's room is on (it only runs there).
+// The people who talk (npcs.js) and Odric's set-piece (odric.js) are scripts like these.
 
 import { T } from '../dungeon.js';
 import { roll } from '../rules.js';
+import { NPCS } from './npcs.js';
+import { ODRIC } from './odric.js';
+import { SCRIPT as RECRUITS, freeCell } from '../recruits.js';
 
 const dist = (x, z, cx, cz) => Math.hypot(x - cx, z - cz);
 
@@ -101,27 +111,6 @@ export const SCRIPTS = {
     },
   },
 
-  // Room 5a: Belisarius, starving and frightened, once his panel is found (PLAN.md 6.3). He joins
-  // as a recruit in M5; for now he begs, and tells what he knows.
-  belisarius: {
-    level: 'dungeon',
-    actions(g, s) {
-      const b = g.foes.find((f) => f.kind === 'belisarius' && f.alive);
-      if (!b || g.busy || !g.party.some((m) => !m.dead && g.distTo(m.tile, b.tile) <= 1.5)) return [];
-      return [{ id: 'talk', icon: '❝', label: 'Talk to the stranger', ok: true, run: () => {
-        const lines = [
-          '"Food... please, have you any food? Three days I\'ve hidden in here." He is a thin man in a torn cloak. "Belisarius. I came for the shrine\'s silver, same as you, I\'d guess."',
-          '"Orcs in the guardroom by the way in. They watch through a door in the wall: you\'d never see it. Be quiet in that corridor, or they come out behind you."',
-          '"The high priest, Odric, keeps the keys on his belt. Cells, treasure, all of it. He\'s in the great chamber, past the green circle. Don\'t go in there."',
-        ];
-        s.said = Math.min(lines.length - 1, s.said ?? 0);
-        g.say(lines[s.said]);
-        s.said++;
-        g.ui.update(g);
-      } }];
-    },
-  },
-
   // Room 6: the healing pool. Half a pint heals 1d6; it can be carried off in flasks, but the
   // water turns to poison in daylight (PLAN.md 6.3).
   pool: {
@@ -139,4 +128,92 @@ export const SCRIPTS = {
       return out;
     },
   },
+
+  // Room 7: fifteen empty coffins. Searching them takes a while, and one of them isn't empty.
+  coffins: {
+    level: 'dungeon',
+    actions(g, s) {
+      const d = g.dungeon, room = d.byId['7'];
+      if (s.done || !room || g.busy || g.mode !== 'explore' || !g.party.some((m) => g.canAct(m) && d.roomOf(m.tile) === room)) return [];
+      return [{ id: 'coffins', icon: '⚰', label: 'Search the coffins', hint: 'Fifteen of them: two turns', ok: true, run: () => {
+        s.done = true;
+        g.advance(20);
+        g.say('One by one the lids scrape off. Empty. Empty. Empty... and then a coffin at the back rattles, by itself.');
+        const at = g.freeTileNear(d.idx(20, 4), null);
+        const rat = g.spawn('rat', at, 'coffin', 2, 'fighting');
+        rat.yaw = Math.PI;
+        g.say('A giant rat bursts out of it, squealing!');
+        g.startEncounter('coffin', { foesSurprised: false });
+      } }];
+    },
+  },
+
+  // Room 13: the prisoners call out; opening a cell gate (Odric's keys, the picks, or a hammer)
+  // lets them out to follow the party.
+  cells: {
+    level: 'dungeon',
+    step(g, s) {
+      const d = g.dungeon;
+      if (s.heard || !g.cells.some((c) => !c.freed && c.at.some(([x, y]) => g.visible[d.idx(x, y)]))) return;
+      s.heard = true;
+      g.say('Hands reach through the bars. "Help us! Get us out! The high priest has the keys, on his belt!" Eight prisoners, villagers by the look of them, crammed into three cells.');
+    },
+    opened(g, s, door) {
+      const cell = g.cells.find((c) => c.i === door.i);
+      if (cell) freeCell(g, cell);
+    },
+  },
+
+  // Room 21's sliding block: it opens from outside, and six rounds (or moves) later grinds shut
+  // again. There's no handle on the inside (PLAN.md 6.3).
+  block: {
+    level: 'dungeon', ROUNDS: 6,
+    opened(g, s, door) {
+      if (g.dungeon.t[door.i] !== T.BLOCK) return;
+      s.left = this.ROUNDS; s.door = door.i; s.from = g.leader.tile;
+      g.say(`The stone block grinds aside on hidden springs, and at once begins to creep back: ${this.ROUNDS} rounds before it shuts.`);
+    },
+    tick(g, s) {
+      if (!s.left) return;
+      const door = g.dungeon.doors.get(s.door);
+      if (!door.open) { s.left = 0; return; }
+      if (--s.left > 0) { if (s.left <= 3) g.say(`The block grinds on: ${s.left} round${s.left === 1 ? '' : 's'}.`); return; }
+      if (g.units.some((u) => u.tile === door.i && !u.dead)) { s.left = 1; g.say('The block grinds against whoever stands in the doorway, and stops for now.'); return; }
+      door.open = false;
+      g.doorsChanged();
+      const inside = g.party.some((m) => !m.dead && g.dungeon.roomOf(m.tile)?.id === '21');
+      g.say(`With a heavy grinding, the stone block slides back into place.${inside ? ' There is no handle on this side. There must be another way out.' : ''}`);
+    },
+    // a move in exploration counts as a round
+    step(g, s) { if (s.left && g.leader.tile !== s.from) { s.from = g.leader.tile; this.tick(g, s); } },
+    round(g, s) { this.tick(g, s); },
+  },
+
+  // Room 22: the frescoes. Rosa knows the faces.
+  frescoes: {
+    level: 'dungeon',
+    step(g, s) {
+      const room = g.dungeon.byId['22'];
+      if (!room || !g.party.some((m) => !m.dead && g.dungeon.roomOf(m.tile) === room)) return;
+      if (!s.seen) { s.seen = true; g.say('The walls are painted from floor to ceiling: halflings, dozens of them, led in chains to a green circle. The paint is fresh in places.'); }
+      if (!s.rosa && g.member('rosa') && !g.member('rosa').dead) { s.rosa = true; g.say('Rosa stops dead in front of the frescoes. "That\'s my aunt Tansy. And the Brockhouse boys. They told us wolves took them." She doesn\'t speak again for a long while.'); }
+    },
+  },
+
+  // Room 20: the cave locusts are the colour of the rock, and nobody sees them until they're
+  // right beside one (or one spits).
+  locusts: {
+    level: 'dungeon',
+    step(g, s) {
+      const hid = g.foes.filter((f) => f.kind === 'locust' && f.alive && f.state === 'hidden');
+      if (!hid.length || g.mode !== 'explore' || !hid.some((f) => g.party.some((m) => !m.dead && g.distTo(m.tile, f.tile) <= 1.5))) return;
+      for (const f of hid) f.state = 'resting';
+      g.say('A rock beside you unfolds long grey legs: cave locusts!');
+      g.startEncounter('locusts', {});
+    },
+  },
+
+  ...NPCS,
+  ...ODRIC,
+  recruits: RECRUITS,
 };

@@ -21,7 +21,7 @@ export function groupTargets(d, path, chain, ok = () => true) {
   return block || snake;
 }
 
-// The 2x2 block behind the leader, facing the way it last stepped, if the room has space.
+// The block behind the leader, two abreast, facing the way it last stepped, if the room has space.
 function blockTargets(d, path, n, ok) {
   const goal = path[path.length - 1], room = d.roomOf(goal);
   if (!room || room.passage) return null;
@@ -37,7 +37,9 @@ function blockTargets(d, path, n, ok) {
   // try the leader's right first, then its left
   for (const side of [1, -1]) {
     const sx = -fy * side, sy = fx * side;
-    const slots = [[gx, gy], [gx + sx, gy + sy], [gx - fx, gy - fy], [gx - fx + sx, gy - fy + sy]].slice(0, n).map(([x, y]) => free(x, y));
+    // two abreast, rank after rank back from the leader (5 or 6 with recruits)
+    const slots = [];
+    for (let k = 0; k < n; k++) { const r = k >> 1, c = k & 1; slots.push(free(gx - fx * r + sx * c, gy - fy * r + sy * c)); }
     if (slots.every((i) => i >= 0)) return slots;
   }
   return null;

@@ -187,14 +187,16 @@ export const SHAFTS = [
 
 // Denizens and where they start (PLAN.md 6.3, Appendix A). hp: each one's hit points from the
 // scenario. state: 'resting' (awake, at ease), 'hidden' (unseen until something disturbs them).
-// group: they share morale and act together.
+// group: they share morale and act together. name: a denizen's own name, if it has one.
+// loot: what's on the body, found by searching it (coins by kind; items with gp worth and cn weight).
 export const FOES = [
   // room 1: four orcs on their bunks round the table; if the party is noisy they come out of the
   // secret door behind it instead (room script 'orc-ambush')
-  { kind: 'orc', at: [38, 9], hp: 3, group: 'orcs', state: 'resting' },
-  { kind: 'orc', at: [41, 10], hp: 2, group: 'orcs', state: 'resting' },
-  { kind: 'orc', at: [38, 12], hp: 3, group: 'orcs', state: 'resting' },
-  { kind: 'orc', at: [40, 12], hp: 8, group: 'orcs', state: 'resting', guard: true },
+  // (their coins are garbled in the source, "2, 11, 7, 9 ep": read as electrum, one purse each)
+  { kind: 'orc', at: [38, 9], hp: 3, group: 'orcs', state: 'resting', loot: { ep: 2 } },
+  { kind: 'orc', at: [41, 10], hp: 2, group: 'orcs', state: 'resting', loot: { ep: 11 } },
+  { kind: 'orc', at: [38, 12], hp: 3, group: 'orcs', state: 'resting', loot: { ep: 7 } },
+  { kind: 'orc', at: [40, 12], hp: 8, group: 'orcs', state: 'resting', guard: true, loot: { ep: 9 } },
   // room 2: five giant rats down in the rubbish, disturbed by searching
   { kind: 'rat', at: [31, 11], hp: 4, group: 'rats', state: 'hidden' },
   { kind: 'rat', at: [33, 11], hp: 3, group: 'rats', state: 'hidden' },
@@ -206,11 +208,71 @@ export const FOES = [
   // room 5a: Belisarius, starving and frightened, behind the panel
   { kind: 'belisarius', at: [29, 2], hp: 2, group: 'belisarius', state: 'cowering' },
   // room 19: four goblins on their straw; broken, they run the loop through 18
-  { kind: 'goblin', at: [23, 23], hp: 4, group: 'goblins', state: 'resting' },
-  { kind: 'goblin', at: [24, 24], hp: 3, group: 'goblins', state: 'resting' },
-  { kind: 'goblin', at: [23, 25], hp: 6, group: 'goblins', state: 'resting' },
-  { kind: 'goblin', at: [24, 22], hp: 4, group: 'goblins', state: 'resting' },
+  { kind: 'goblin', at: [23, 23], hp: 4, group: 'goblins', state: 'resting', loot: { sp: 6 } },
+  { kind: 'goblin', at: [24, 24], hp: 3, group: 'goblins', state: 'resting', loot: { sp: 7 } },
+  { kind: 'goblin', at: [23, 25], hp: 6, group: 'goblins', state: 'resting', loot: { ep: 2 } },
+  { kind: 'goblin', at: [24, 22], hp: 4, group: 'goblins', state: 'resting', loot: { sp: 3 } },
+  // room 8: the ghoul, Odric's pet, crouched at the spot marked A
+  { kind: 'ghoul', at: [13, 8], hp: 10, group: 'ghoul', state: 'resting' },
+  // room 9: the Arch-deaconess at her table, who would rather talk first; her rockmen in 9a
+  { kind: 'archdeaconess', at: [19, 9], hp: 14, group: 'deaconess', state: 'parley' },
+  { kind: 'rockman', at: [24, 8], hp: 5, group: 'rockmen', state: 'searching' },
+  { kind: 'rockman', at: [25, 9], hp: 8, group: 'rockmen', state: 'searching' },
+  // room 10: the underpriests at prayer by their candles; Kithar holds the silver hemisphere
+  { kind: 'kithar', at: [24, 18], hp: 10, group: 'priests', state: 'praying', loot: { items: [{ name: 'silver hemisphere', gp: 100, cn: 20 }] } },
+  { kind: 'underpriest', name: 'Kerzen', at: [25, 17], hp: 5, group: 'priests', state: 'praying' },
+  { kind: 'underpriest', name: 'Ojar', at: [25, 19], hp: 3, group: 'priests', state: 'praying' },
+  // room 11: the bugbear among the urns
+  { kind: 'bugbear', at: [18, 24], hp: 11, group: 'bugbear', state: 'resting', loot: { sp: 76 } },
+  // room 12: Odric at the circle with Rosa, his three skeletons, and the gecko chained to the pole
+  { kind: 'odric', at: [13, 16], hp: 9, group: 'odric', state: 'ritual', loot: { gp: 30, keys: true } },
+  { kind: 'skeleton', at: [10, 17], hp: 6, group: 'skeletons', state: 'resting' },
+  { kind: 'skeleton', at: [16, 17], hp: 2, group: 'skeletons', state: 'resting' },
+  { kind: 'skeleton', at: [13, 21], hp: 8, group: 'skeletons', state: 'resting' },
+  { kind: 'gecko', at: [13, 19], hp: 14, group: 'gecko', state: 'chained' },
+  { kind: 'rosa', at: [12, 17], hp: 4, group: 'rosa', state: 'captive' },
+  // room 13: two zombies shamble between the cells
+  { kind: 'zombie', at: [6, 8], hp: 6, group: 'zombies', state: 'resting' },
+  { kind: 'zombie', at: [7, 9], hp: 5, group: 'zombies', state: 'resting' },
+  // room 14: the giant centipede between the chests
+  { kind: 'centipede', at: [3, 12], hp: 2, group: 'centipede', state: 'resting' },
+  // room 20: two cave locusts, grey on grey, unseen until someone is beside them
+  { kind: 'locust', at: [42, 26], hp: 9, group: 'locusts', state: 'hidden' },
+  { kind: 'locust', at: [44, 27], hp: 3, group: 'locusts', state: 'hidden' },
+  // room 23: the lizardman on his rock, the sword behind it
+  { kind: 'lizardman', at: [13, 31], hp: 1, group: 'lizardman', state: 'guarding' },
 ];
+
+// Room 13's cells: who is behind each gate. The merchant is in the first (PLAN.md 6.3).
+export const CELLS = [
+  { gate: [5, 7], at: [[3, 6], [4, 6], [5, 6]], count: 3, merchant: true },
+  { gate: [7, 7], at: [[7, 6], [8, 6]], count: 3 },
+  { gate: [4, 9], at: [[3, 8], [3, 9]], count: 2 },
+];
+
+// Containers (PLAN.md 6.3, Appendix B). at: tile units, as the props. lock: locked (Odric's keys
+// open them, or the thief's picks, or smashing); trap: 'paralysis' (a needle: save vs poison or
+// paralysed 2d4 turns) or 'death' (save or die in 10 turns unless cured); coins and items as for
+// loot; hidden: what only a search of the opened chest turns up (the false bottom).
+export const CHESTS = [
+  { id: 'chest1', room: '14', at: [4.6, 11.4], lock: true, hidden: { sp: 3000 } },
+  { id: 'chest2', room: '14', at: [4.6, 12.1], lock: true, items: [{ name: 'gold statuette', gp: 300, cn: 50 }] },
+  { id: 'chest3', room: '14', at: [4.6, 12.8], lock: true, trap: 'paralysis', gp: 1000, items: [{ name: 'gem', gp: 150, cn: 1 }, { name: 'gem', gp: 150, cn: 1 }] },
+  { id: 'chest4', room: '14', at: [4.6, 13.5], lock: true, trap: 'death', scrolls: { scrollProtection: 1, scrollCure: 2 } },
+  { id: 'robes', room: '15', at: [7.5, 23.6], robes: true },
+  { id: 'chest19', room: '19', at: [22.3, 23.5], gp: 23, sp: 570, cp: 3004 },
+];
+
+// Things a search turns up in a room, once its denizens are dealt with (PLAN.md Appendix B).
+export const CACHES = [
+  { room: '2', sp: 216, text: 'Down in the rubbish, a scatter of silver: 216 sp' },
+  { room: '8', items: [{ name: 'silk and vestments', gp: 100, cn: 150 }], text: 'In the wardrobe: silk robes and vestments, worth 100 gp but bulky' },
+  { room: '9', map: 0.2, text: 'The papers on the table' },
+  { room: '20', map: ['1', '2', '5'], text: 'The corpse in plate mail clutches a map: rooms 1, 2 and 5, and the way in' },
+];
+
+// Room 11's urns of absolution: a pearl in each, freed only by smashing (a crushing weapon).
+export const URNS = { room: '11', count: 6, pearl: { name: 'pearl', gp: 60, cn: 1 } };
 
 // Traps (PLAN.md 3.6). A hidden pit looks like floor until it's found or fallen into.
 export const TRAPS = [
