@@ -1,7 +1,7 @@
 // Settings (PLAN.md 7.6, 3.8): difficulty for a new game, and the player's preferences. Kept in
 // localStorage when it's there (it may not be: private windows), with plain defaults otherwise.
 import { PARTY } from './defs.js';
-import { roll, mod } from './rules.js';
+import { die, mod } from './rules.js';
 
 const KEY = 'kollchap-settings';
 export const DEFAULTS = {
@@ -26,15 +26,18 @@ export function save(s) {
 // ---------- difficulty (PLAN.md 3.8) ----------
 //   Story: level 3, more hit points, 2 more potions, and the downed get up when the fight ends.
 //   Normal: level 2 with the hit points of PLAN.md 4, downed for 3 rounds.
-//   Classic: level 1, hit points rolled, 0 HP is death, and the cleric has no spells yet (B/X).
+//   Classic: level 1, hit points rolled (1s and 2s rerolled), 0 HP is death, and the cleric has
+//   no spells yet (B/X).
 export const DIFFICULTIES = {
   story: { name: 'Story', level: 3, note: 'Level 3, more hit points, 4 potions. The fallen get up when a fight ends.' },
   normal: { name: 'Normal', level: 2, note: 'Level 2. A fallen hero bleeds to death in 3 rounds unless bandaged.' },
-  classic: { name: 'Classic', level: 1, note: 'Level 1, hit points rolled. 0 HP is death. B/X as written.' },
+  classic: { name: 'Classic', level: 1, note: 'Level 1, hit points rolled (1s and 2s rerolled). 0 HP is death.' },
 };
 // Thief skills by level (B/X): open locks, find/remove traps, move silently, hide, climb.
 const THIEF = { 1: [15, 10, 20, 10, 87], 2: [20, 15, 25, 15, 88], 3: [25, 20, 30, 20, 89] };
 const HIT_DIE = { Fighter: 8, Cleric: 6, 'Magic-User': 4, Thief: 4 };
+// A rolled hit die, rerolling 1s and 2s (a common table rule: nobody starts on 1 HP).
+const hitDie = (rng, sides) => { let r; do r = die(rng, sides); while (r <= 2); return r; };
 
 // The heroes for a difficulty: copies of the defs, adjusted.
 export function heroes(difficulty, rng) {
@@ -42,7 +45,7 @@ export function heroes(difficulty, rng) {
   return PARTY.map((base) => {
     const def = structuredClone(base);
     if (d === 'story') def.hp = Math.round(base.hp * 1.5);
-    if (d === 'classic') def.hp = Math.max(1, roll(rng, `1d${HIT_DIE[def.cls]}`) + (def.cls === 'Fighter' ? mod(14) : 0));
+    if (d === 'classic') def.hp = hitDie(rng, HIT_DIE[def.cls]) + (def.cls === 'Fighter' ? mod(14) : 0);
     if (def.kit.potions) def.kit.potions = d === 'story' ? base.kit.potions + 2 : d === 'classic' ? 0 : base.kit.potions;
     if (def.skills) {
       const [openLocks, findTraps, moveSilently, hideInShadows, climbWalls] = THIEF[level];

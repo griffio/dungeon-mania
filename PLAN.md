@@ -184,7 +184,7 @@ The switch is shown on screen: the screen dims, a gong sounds, and the **surpris
 |---|---|---|---|---|
 | Story | 3 | Maximum | Downed, revive at end of encounter | +2 potions |
 | **Normal** (default) | 2 | Maximum at 1st level, rolled after | Downed for 3 rounds | 2 potions |
-| Classic | 1 | Rolled | 0 HP = dead | B/X as written. The cleric has no spells at level 1 |
+| Classic | 1 | Rolled, rerolling 1s and 2s | 0 HP = dead | B/X as written, but for the reroll. The cleric has no spells at level 1 |
 
 ---
 
