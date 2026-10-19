@@ -1,0 +1,22 @@
+# The oracle's Worker (PLAN.md 8.2). Hosting is still undecided (PLAN.md 12): this deploys it as a
+# standalone Worker; the same src/index.js also works behind Pages Functions.
+#   npx wrangler dev                      (from worker/, with `wrangler login` or CLOUDFLARE_API_TOKEN)
+#   npx wrangler secret put ELEVENLABS_API_KEY
+#   npx wrangler deploy
+# Without wrangler, `npm run oracle` at the project root runs the same code on Node.
+name = "kollchap-oracle"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+
+[ai]
+binding = "AI"
+
+[vars]
+# the pages allowed to call it, besides localhost (comma-separated origins)
+ALLOWED_ORIGINS = ""
+
+# A KV namespace for the answer and voice cache. Without it the Cache API is used.
+#   npx wrangler kv namespace create CACHE
+# [[kv_namespaces]]
+# binding = "CACHE"
+# id = "<the id it prints>"

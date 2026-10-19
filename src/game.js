@@ -1451,6 +1451,7 @@ export class Game {
 
   cancel() { this.target = -1; this.refreshPreview(); this.ui.update(this); }
   choose(k) { dialogue.choose(this, k); }
+  submit(text) { dialogue.submit(this, text); }
 
   refreshPreview() {
     const goal = this.target >= 0 ? this.target : this.hoverTile;
@@ -1659,6 +1660,11 @@ export class Game {
       if (asleep && !f.dead && Math.floor(this.time * 0.8 + f.home) !== Math.floor((this.time - 1 / 60) * 0.8 + f.home)) this.float(f, 'z', 'zz');
     }
 
+    // the oracle's eyes: lit once it has woken, burning while it thinks
+    if (this.L.id === 'dungeon' && this.scriptState.oracle?.greeted && !this.state.statueGone && (!this.fogOn || this.visible[d.idx(30, 30)])) {
+      const glow = this.oracleBusy ? 2.5 + Math.sin(this.time * 9) : 0.8;
+      for (const ex of [-0.09, 0.09]) this.dyn.sph.add(30.5 + ex, 1.33, 30.5 + 0.24, 0.05, 0.035, 0.03, 0, [1, 0.75, 0.35], 4, glow);
+    }
     // the prisoners: in their cells, and once freed, a huddle trailing the party
     for (const c of this.cells || []) {
       if (c.freed) continue;

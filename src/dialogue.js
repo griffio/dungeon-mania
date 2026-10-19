@@ -3,10 +3,21 @@
 // map waits.
 //   talk(g, { who, name, text, options: [{ label, hint, ok, run }] })   who: the portrait id
 
-export function talk(g, { who, name, text, options }) {
-  g.dialogue = { who, name, text, options: options?.length ? options : [{ label: 'Go on', run: () => {} }] };
+//   input: { placeholder, submit(text) }   a free-text answer (the oracle's questions)
+//   wait: true    no answer yet (the oracle thinking): no buttons
+export function talk(g, { who, name, text, options, input, wait }) {
+  g.dialogue = { who, name, text, input, options: options?.length || input || wait ? options || [] : [{ label: 'Go on', run: () => {} }] };
   // the quoted words are spoken, if there is a recording of them
   g.audio?.sayQuotes(text);
+  g.ui.update(g);
+}
+
+// The typed answer.
+export function submit(g, text) {
+  const d = g.dialogue;
+  if (!d?.input || !text.trim()) return;
+  g.dialogue = null;
+  d.input.submit(text);
   g.ui.update(g);
 }
 

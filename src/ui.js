@@ -178,8 +178,9 @@ export class UI {
 
     // someone talking
     const dl = $('#dialogue');
-    if (g.dialogue) {
-      const dg = g.dialogue, img = dl.querySelector('img');
+    if (g.dialogue && g.dialogue === this.shownDialogue) { /* already up: keep what's being typed */ }
+    else if (g.dialogue) {
+      const dg = this.shownDialogue = g.dialogue, img = dl.querySelector('img');
       img.className = dg.who ? '' : 'none';
       if (dg.who) img.src = portrait(dg.who);
       dl.querySelector('.nm').textContent = dg.name;
@@ -191,8 +192,15 @@ export class UI {
         b.onclick = () => g.choose(k);
         opts.appendChild(b);
       });
+      // a question of your own (the oracle)
+      if (dg.input) {
+        const row = el('form', 'ask', `<input type="text" maxlength="120" autocomplete="off" placeholder="${dg.input.placeholder}"><button type="submit">Ask</button>`);
+        row.onsubmit = (e) => { e.preventDefault(); g.submit(row.querySelector('input').value); };
+        opts.prepend(row);
+        setTimeout(() => row.querySelector('input').focus(), 50);
+      }
       dl.classList.add('show');
-    } else dl.classList.remove('show');
+    } else { dl.classList.remove('show'); this.shownDialogue = null; }
 
     // the spell waiting for a target
     const cp = $('#castprompt');

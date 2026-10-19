@@ -109,8 +109,9 @@ export class Audio {
   }
 
   // A one-shot. pos: [x, z] in the world, for panning and distance.
-  play(id, { vol = 1, pos = null, rate = 1, bus = this.sfxBus, jitter = 0.06 } = {}) {
-    const b = this.buffers.get(id), c = this.ctx;
+  play(id, opts = {}) { return this.playBuffer(this.buffers.get(id), opts); }
+  playBuffer(b, { vol = 1, pos = null, rate = 1, bus = this.sfxBus, jitter = 0.06 } = {}) {
+    const c = this.ctx;
     if (!b || !c) return null;
     const src = c.createBufferSource();
     src.buffer = b;
@@ -137,14 +138,28 @@ export class Audio {
     if (this.queue.length > 3) this.queue.shift();
     if (!this.speaking) this.next();
   }
+  // Speech that arrived as audio (the oracle's live answers), queued like the rest.
+  async speakBuffer(ab, who) {
+    if (!this.ctx) return;
+    try {
+      const b = await this.ctx.decodeAudioData(ab);
+      const id = `live_${Math.random().toString(36).slice(2)}`;
+      this.buffers.set(id, b);
+      this.queue.push({ id, bus: who === 'oracle' ? this.oracleBus : this.speechBus, rate: who === 'oracle' ? 0.9 : 1, once: true });
+      if (!this.speaking) this.next();
+    } catch {}
+  }
+  // A recording of these words, if there is one.
+  lineFor(text) { return this.lines?.get(hash(text)) || null; }
   async next() {
     const item = this.queue.shift();
     if (!item) { this.speaking = null; this.duck(false); return; }
     this.speaking = item;
     this.duck(true);
-    const b = await this.load(item.id);
+    const b = item.once ? this.buffers.get(item.id) : await this.load(item.id);
+    if (item.once) this.buffers.delete(item.id);
     if (!b) { this.next(); return; }
-    const src = this.play(item.id, { bus: item.bus, rate: item.rate, jitter: 0 });
+    const src = this.playBuffer(b, { bus: item.bus, rate: item.rate });
     this.busyUntil = this.ctx.currentTime + b.duration / item.rate + 0.3;
     src.onended = () => setTimeout(() => this.next(), 250);
   }

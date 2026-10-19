@@ -117,6 +117,7 @@ export class Input {
   key(e) {
     const g = this.getGame();
     if (!g || e.metaKey || e.ctrlKey) return;
+    if (e.target?.tagName === 'INPUT') return; // typing a question to the oracle
     const cam = g.camera;
     // number keys fire the action bar's buttons
     if (g.dialogue) { if (/^[1-9]$/.test(e.key)) g.choose(Number(e.key) - 1); return; }

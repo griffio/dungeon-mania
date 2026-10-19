@@ -9,7 +9,7 @@ import * as SURFACE from '../src/surface-data.js';
 
 // The spoken lines are found by the hash of their words, so a script edit that changes a line
 // silently loses its recording. Every line in the manifest must still be said, word for word.
-const SOURCES = ['src/scripts/npcs.js', 'src/scripts/odric.js', 'src/scripts/rooms.js', 'src/recruits.js', 'src/ending.js', 'src/game.js']
+const SOURCES = ['src/scripts/npcs.js', 'src/oracle.js', 'src/scripts/odric.js', 'src/scripts/rooms.js', 'src/recruits.js', 'src/ending.js', 'src/game.js']
   .map((f) => readFileSync(new URL(`../${f}`, import.meta.url), 'utf8').replace(/\\'/g, "'")).join('\n');
 
 test('every recorded line is still in the scripts, word for word', () => {

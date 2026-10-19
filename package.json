@@ -5,6 +5,7 @@
   "scripts": {
     "serve": "npx --yes http-server -c-1 -p 8080 .",
     "test": "node --test test/*.test.js",
-    "trace": "python3 tools/trace-map.py"
+    "trace": "python3 tools/trace-map.py",
+    "oracle": "node tools/oracle-dev.mjs"
   }
 }

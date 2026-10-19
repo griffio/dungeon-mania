@@ -8,6 +8,7 @@ import { join } from '../recruits.js';
 import { roll } from '../rules.js';
 import { COINS } from '../defs.js';
 import * as treasure from '../treasure.js';
+import * as oracle from '../oracle.js';
 
 const foe = (g, kind) => g.foes.find((f) => f.kind === kind);
 const near = (g, i, r = 1.5) => g.party.some((m) => !m.dead && g.distTo(m.tile, i) <= r);
@@ -261,37 +262,50 @@ export const NPCS = {
   },
 
   // ---------- 21: the statue oracle (PLAN.md 6.3, 8.3) ----------
-  // Three "How" questions a day, and one of the three answers is false. These canned couplets
-  // are its offline voice; the AI oracle (M7) answers free questions the same way.
+  // Three "How" questions a day, of twelve words or fewer, and one of the three answers is false.
+  // The player types a question or picks one; the Worker answers it from the game's fact sheet
+  // (oracle.js), or, offline, a canned couplet does. The statue's eyes glow while it thinks.
   oracle: {
-    level: 'dungeon',
+    level: 'dungeon', PER_DAY: 3,
+    SUGGESTIONS: ['How do we reach the sword?', 'How do we get out of this room?', 'How do we free the prisoners?', 'How do we beat Odric?', 'How do we pass the Arch-deaconess?'],
     step(g, s) {
       const statue = g.dungeon.idx(30, 30);
       if (s.greeted || g.state.statueGone || !g.visible[statue] || g.dungeon.roomOf(g.leader.tile)?.id !== '21') return;
       s.greeted = true;
       g.say('The statue\'s stone eyes open. "Three questions, each of them how, / I answer today. Ask, and ask now. / But mark me well, as you go your way: / one of my three is a lie, they say."');
     },
+    // a new day, three new questions (and a new lie among them, drawn at the day's first question:
+    // listing the actions must never touch the dice)
+    today(g, s) {
+      const day = Math.floor(g.clock / 1440);
+      if (s.day !== day) { s.day = day; s.asked = 0; s.lie = undefined; }
+      return this.PER_DAY - s.asked;
+    },
     actions(g, s) {
       const statue = g.dungeon.idx(30, 30);
       if (g.state.statueGone || g.busy || g.mode !== 'explore' || !near(g, statue, 2)) return [];
-      const left = 3 - (s.asked || 0);
-      return [{ id: 'oracle', icon: '❓', label: 'Ask the statue', hint: left ? `${left} question${left === 1 ? '' : 's'} left today` : 'No more today', ok: left > 0, run: () => this.ask(g, s) }];
+      const left = this.today(g, s);
+      return [{ id: 'oracle', icon: '❓', label: 'Ask the statue', hint: left ? `${left} question${left === 1 ? '' : 's'} left today` : 'No more today', ok: left > 0 && !g.oracleBusy, run: () => this.open(g, s) }];
     },
-    ask(g, s) {
-      if (s.lie === undefined) s.lie = Math.floor(g.rng() * 3); // which answer of the three is false
-      const Q = [
-        ['How do we reach the sword?', 'Down the wet stairs where the sunlight falls, / behind the rock in the flooded halls.', 'Up the stair where the braziers glow, / in Odric\'s bed the sword lies low.'],
-        ['How do we get out of this room?', 'Search the west wall, stone by stone: / a door is hidden there, unknown.', 'Push the block the way you came; / it turns for those who speak its name.'],
-        ['How do we free the prisoners?', 'Iron keys on Odric\'s belt / unlock the cells where the captives knelt.', 'Speak the goddess\'s name out loud, / and the bars will part before the crowd.'],
-        ['How do we beat Odric?', 'Strike while his rite is still undone; / in heavy iron he\'s slow to run.', 'Only silver finds his heart; / steel and iron fall apart.'],
-        ['How do we pass the Arch-deaconess?', 'Bring her word of what was stolen: / a seated figure, stone and solemn.', 'Bow and call her mother dear, / and she will let you pass from here.'],
-      ].filter((q) => !(s.done || []).includes(q[0]));
-      talk(g, { who: null, name: 'The statue', text: '"Ask."', options: [...Q.map((q) => ({ label: q[0], run: () => {
-        const n = s.asked || 0;
-        s.asked = n + 1;
-        (s.done ||= []).push(q[0]);
-        talk(g, { who: null, name: 'The statue', text: `"${n === s.lie ? q[2] : q[1]}"`, options: [] });
-      } })), { label: 'Ask nothing', run: () => {} }] });
+    open(g, s) {
+      const asked = s.done || [];
+      talk(g, { who: null, name: 'The statue', text: '"Ask."',
+        input: { placeholder: 'How...? (12 words or fewer)', submit: (q) => this.ask(g, s, q) },
+        options: [...this.SUGGESTIONS.filter((q) => !asked.includes(q)).slice(0, 4).map((q) => ({ label: q, run: () => this.ask(g, s, q) })), { label: 'Ask nothing', run: () => {} }] });
+    },
+    async ask(g, s, question) {
+      const q = question.trim();
+      if (!q || this.today(g, s) <= 0) return;
+      if (s.lie === undefined) s.lie = Math.floor(g.rng() * this.PER_DAY);
+      const n = s.asked++;
+      (s.done ||= []).push(q);
+      g.oracleBusy = true;
+      talk(g, { who: null, name: 'The statue', text: `You ask: "${q}"\nThe statue's eyes kindle, and the stone begins to hum...`, wait: true });
+      const { answer } = await oracle.ask(g, q, n !== s.lie);
+      g.oracleBusy = false;
+      g.say(`The statue answers: ${answer}`); // (unquoted: the dialogue below is what's voiced)
+      talk(g, { who: null, name: 'The statue', text: `"${answer}"`, options: [{ label: this.today(g, s) > 0 ? 'Ask another' : 'Step back', run: () => { if (this.today(g, s) > 0) this.open(g, s); } }, { label: 'Enough', run: () => {} }] });
+      oracle.voice(g, answer);
     },
   },
 };
