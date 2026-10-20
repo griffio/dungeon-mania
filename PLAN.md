@@ -145,6 +145,7 @@ The switch is shown on screen: the screen dims, a gong sounds, and the **surpris
 - **Visibility:** a tile is visible if it is in line of sight **and** lit, or within 1 tile.
   - Explored tiles stay as a dim, desaturated memory, the way fog of war works in the chopper.
   - Unexplored tiles are black. The renderer skips shading there, as in the chopper.
+  - The rock around what the party has seen is drawn as known rock: its tops, and any face the cutaway exposes inside the rock, a flat, cool grey (a shade brighter in sight than in memory), never torchlit, so the dungeon reads as solid rock with passages cut through it rather than as lit wall slices floating in black. Known ground is never darker than its memory, so black always means unexplored. A wall's face takes the fog of the tile it faces, so the back of a wall beside an unexplored room is as black as the room, and the rock beyond a closed door is not marked seen.
 - **Noise:**
   - Sources include combat, forcing doors, smashing locks or urns, falling into pits, and armour clanking when running.
   - Each source makes noise with a radius. Denizens inside the radius investigate, following the chopper's `noise(x, y, r)` and the suspicious → investigate → alerted ladder.

@@ -116,6 +116,45 @@ fn relief(Ns: vec3f, N: vec3f) -> vec3f { return normalize(Ns + gN - N); }
 
 fn fogOn() -> bool { return S.keyDir.w > 0.5; }
 fn fogAt(xz: vec2f) -> vec2f { return textureSampleLevel(fogTex, linSamp, xz / S.info.xy, 0.0).rg; }
+fn tileOf(xz: vec2f) -> vec2i { return clamp(vec2i(floor(xz)), vec2i(0), vec2i(S.info.xy) - 1); }
+fn isWall(c: vec2i) -> bool { return textureLoad(wallTex, c, 0).r > 0.5; }
+// solid rock (a tile standing at least a tile high), as opposed to a door in the wall
+fn isRock(c: vec2i) -> bool { return textureLoad(wallTex, c, 0).g > 0.25; }
+// Fog for a surface on the open tile own: blended between the tiles around it, so the edge of
+// torchlight fades over a tile rather than stopping at a tile edge, but a wall tile counts as
+// the tile itself, so nothing seen on one side of a wall bleeds onto the ground on the other.
+fn fogGround(xz: vec2f, own: vec2i) -> vec2f {
+  let f = xz - 0.5;
+  let b = vec2i(floor(f));
+  let w = fract(f);
+  let v0 = textureLoad(fogTex, own, 0).rg;
+  var sum = vec2f(0.0);
+  for (var j = 0; j < 2; j++) {
+    for (var k = 0; k < 2; k++) {
+      let c = clamp(b + vec2i(k, j), vec2i(0), vec2i(S.info.xy) - 1);
+      let wt = select(1.0 - w.x, w.x, k == 1) * select(1.0 - w.y, w.y, j == 1);
+      sum += select(textureLoad(fogTex, c, 0).rg, v0, isWall(c)) * wt;
+    }
+  }
+  return sum;
+}
+// Where a surface reads its fog. A wall's face reads the tile it looks onto, so the back of a
+// wall facing unexplored ground is as black as that ground; a wall's top reads its own tile;
+// anything standing on open ground reads the ground around it.
+fn fogOf(wp: vec3f, N: vec3f) -> vec2f {
+  if (abs(N.y) < 0.5) {
+    let back = tileOf(wp.xz - N.xz * 0.04);
+    if (isWall(back)) {
+      // a face cut through the rock belongs to its own tile; a face onto open ground, to that ground
+      let front = tileOf(wp.xz + N.xz * 0.5);
+      return textureLoad(fogTex, select(front, back, isRock(back) && isRock(front)), 0).rg;
+    }
+    return fogGround(wp.xz, tileOf(wp.xz + N.xz * 0.04));
+  }
+  let own = tileOf(wp.xz);
+  if (isWall(own)) { return textureLoad(fogTex, own, 0).rg; }
+  return fogGround(wp.xz, own);
+}
 // Explored but out of sight: a dim, cool, desaturated memory of the surface, whatever the
 // light is doing there now.
 fn memory(base: vec3f, N: vec3f) -> vec3f {
@@ -301,14 +340,19 @@ fn faceU(N: vec3f) -> vec2f { return normalize(vec2f(-N.z, N.x) + vec2f(1e-5, 0.
 @fragment fn fsMesh(i: VOut) -> @location(0) vec4f {
   // derivatives up front, while control flow is still uniform
   let dx = dpdx(i.wpos); let dy = dpdy(i.wpos);
+  let N = normalize(i.nrm);
+  let wp = i.wpos;
+  // the top of a wall tile is solid rock under the ceiling: never lit, only known
+  let rockTop = N.y > 0.5 && wp.y > 0.1 && isWall(tileOf(wp.xz));
+  // a face of rock looking onto more rock: the inside of the rock mass, which only the cutaway
+  // ever exposes (where the knee-high walls step back up to full height), so no torch lights it
+  let rockCut = abs(N.y) < 0.5 && isRock(tileOf(wp.xz - N.xz * 0.04)) && isRock(tileOf(wp.xz + N.xz * 0.5));
   var fog = vec2f(1.0);
   if (fogOn()) {
-    fog = fogAt(i.wpos.xz);
+    fog = fogOf(wp, N);
     if (fog.x + fog.y < 0.004) { return vec4f(0.0, 0.0, 0.0, 1.0); } // never seen: skip shading
   }
   let mat = i32(i.m.y + 0.5);
-  let N = normalize(i.nrm);
-  let wp = i.wpos;
   let t = S.info.z;
   var Ns = N;   // the normal the light sees, with the surface's relief
   var base = i.col;
@@ -392,7 +436,15 @@ fn faceU(N: vec3f) -> vec2f { return normalize(vec2f(-N.z, N.x) + vec2f(1e-5, 0.
   }
   var col = grade(shade(wp, Ns, base, spec, gloss)) + i.col * i.m.x;
   if (mat == 4) { col = i.col * max(i.m.x, 1.0); }
-  if (fogOn()) { col = mix(memory(base, N) * fog.y, col, fog.x); }
+  if (fogOn()) {
+    // Known ground is never darker than its memory, so black means unexplored and nothing else.
+    // A wall's top, and a face cut through the rock, are drawn as known rock, a shade brighter
+    // in sight than in memory, so the rock around a lit passage reads as solid rather than as a
+    // void with lit walls in it.
+    let mem = memory(base, N);
+    if (rockTop || rockCut) { col = mem * 1.6; }
+    col = max(col * fog.x, mem * fog.y);
+  }
   return vec4f(tonemap(col), 1.0);
 }
 
@@ -472,8 +524,8 @@ struct DOut {
     let base = pow(col, vec3f(2.2));
     var lin = grade(shade(v.wp, vec3f(0.0, 1.0, 0.0), base, 0.05, 12.0));
     if (fogOn()) {
-      let f = fogAt(v.wp.xz);
-      lin = mix(memory(base, vec3f(0.0, 1.0, 0.0)) * f.y, lin, f.x);
+      let f = fogGround(v.wp.xz, tileOf(v.wp.xz));
+      lin = max(lin * f.x, memory(base, vec3f(0.0, 1.0, 0.0)) * f.y);
       alpha *= max(f.x, f.y);
     }
     col = tonemap(lin);

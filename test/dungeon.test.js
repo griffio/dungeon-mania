@@ -142,6 +142,12 @@ test('sight: lit tiles in view, the dark only next to you, and the walls around 
   assert.equal(seen[tiny.idx(4, 2)], 0, 'behind the closed door');
   assert.equal(seen[tiny.idx(0, 0)], 1, 'the wall beside a seen tile');
   assert.equal(seen[tiny.idx(4, 1)], 0, 'rock next to nothing seen');
+  assert.equal(seen[tiny.idx(2, 3)], 1, 'the wall beside the door, on this side');
+  assert.equal(seen[tiny.idx(4, 3)], 0, 'the wall beyond the closed door');
+  const door = tiny.doors.get(tiny.idx(3, 2));
+  door.open = true;
+  assert.equal(tiny.sight(eye, tiny.light([{ x: 1.5, z: 1.5, reach: 6 }]))[tiny.idx(4, 3)], 1, 'seen once the door is open');
+  door.open = false;
   const dark = tiny.sight(eye, new Uint8Array(tiny.n));
   assert.equal(dark[tiny.idx(2, 2)], 1, 'next to you, even unlit');
   assert.equal(dark[tiny.idx(1, 3)], 0, 'two tiles away in the dark');

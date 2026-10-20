@@ -209,6 +209,9 @@ export class Dungeon {
   // Movement cost to every tile within budget (Infinity where unreachable).
   reach(from, budget, opts = {}) { return this.search(from, { ...opts, budget }).dist; }
 
+  // Is tile i a closed door (found or not), a wall as far as the eye can tell?
+  shut(i) { const d = this.tile(i); return d.door && !d.bars && !this.doors.get(i).open; }
+
   // Does light/sight pass this tile? Closed doors block; bars, gates and the pool don't.
   clear(x, y) {
     const t = this.at(x, y), d = TILE[t];
@@ -253,6 +256,7 @@ export class Dungeon {
 
   // What someone on tile `eye` sees (PLAN.md 3.5): lit tiles in line of sight, plus the tiles
   // next to them even in the dark. Rock beside a seen tile counts as seen: its wall face shows.
+  // A closed door is seen as a wall, so the rock beyond it stays unseen.
   sight(eye, lit, out = new Uint8Array(this.n)) {
     const { W, n } = this, ex = eye % W, ey = (eye - ex) / W;
     out.fill(0);
@@ -269,7 +273,7 @@ export class Dungeon {
         const nx = x + N8[k][0], ny = y + N8[k][1];
         if (!this.inside(nx, ny)) continue;
         const j = ny * W + nx;
-        if (out[j] && this.t[j] !== T.ROCK) out[i] = 1;
+        if (out[j] && this.t[j] !== T.ROCK && !this.shut(j)) out[i] = 1;
       }
     }
     return out;
